@@ -90,12 +90,9 @@ export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[
   if (!response || response.length <= 12) return [];
   /* eslint-disable no-console */
   console.log(`[file-list] received ${response.length} bytes from device`);
-  // Extract printable ASCII after each delimiter — that's the
-  // filename region. If our parser misses a record, listing all
-  // 224 surfaces the odd one out.
   const payload = response.slice(12);
   const FULL_RE = /(REC_\d{8}_\d{6}\.hda|\d{4}[A-Za-z]{3}\d{2}-\d{6}-Rec\d+\.hda)/i;
-  const records: { idx: number; preview: string; matchesRegex: boolean }[] = [];
+  const records: { idx: number; ascii: string; hex: string; matchesRegex: boolean }[] = [];
   for (let i = 0; i + 4 <= payload.length; i++) {
     if (
       payload[i] === 0x05 && payload[i + 1] === 0x00 &&
@@ -103,24 +100,22 @@ export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[
     ) {
       const start = i + 4;
       const end = Math.min(start + 40, payload.length);
-      let s = '';
+      let ascii = '';
+      let hex = '';
       for (let j = start; j < end; j++) {
         const b = payload[j];
-        if (b >= 32 && b < 127) s += String.fromCharCode(b);
-        else break;
+        ascii += b >= 32 && b < 127 ? String.fromCharCode(b) : '·';
+        hex += b.toString(16).padStart(2, '0') + ' ';
       }
-      records.push({
-        idx: records.length,
-        preview: s,
-        matchesRegex: FULL_RE.test(s)
-      });
+      records.push({ idx: records.length, ascii, hex, matchesRegex: FULL_RE.test(ascii) });
       i += 3;
     }
   }
   const orphans = records.filter((r) => !r.matchesRegex);
   console.log(`[file-list] records on wire: ${records.length}, regex misses: ${orphans.length}`);
-  if (orphans.length > 0) {
-    console.log('[file-list] records the regex doesn\'t match:', orphans.map((r) => `#${r.idx}: ${JSON.stringify(r.preview)}`));
+  for (const r of orphans) {
+    console.log(`  #${r.idx} ascii: ${r.ascii}`);
+    console.log(`  #${r.idx} hex:   ${r.hex}`);
   }
   /* eslint-enable no-console */
   return parseFileListResponse(response);

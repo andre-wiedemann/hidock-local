@@ -66,10 +66,18 @@ async function loadFileListLive(silent = false): Promise<void> {
   try {
     if (!silent) log('Getting file list…', 'info');
     state.files = [];
-    // Reconcile saved-state with disk before re-rendering rows — covers
-    // the case where the user deleted a file in Finder while the app was
-    // running so the saved badge disappears on the same List Files click
-    // that surfaces the device's recordings.
+
+    // Re-run init before every list refresh. The HiDock drops back into
+    // a truncated-list state after each session of activity, and only
+    // the full 7-command init sequence reliably puts it back into the
+    // complete-list state. Re-running on every List Files click is
+    // cheap (~10ms total) and keeps the count consistent.
+    try {
+      await runInitSequence(state.device);
+    } catch (err) {
+      log(`Re-init failed: ${(err as Error).message} — listing anyway`, 'warning');
+    }
+
     await refreshSavedFromDisk();
     await refreshStoragePanel();
 
