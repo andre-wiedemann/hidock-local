@@ -64,7 +64,9 @@ export function renderFileList(metaSuffix?: string): void {
     item.dataset['dayKey'] = k || 'unknown';
     item.dataset['fileIndex'] = String(index);
 
-    const badge = saved ? '<span class="saved-badge">✓ Saved</span>' : '';
+    // Badge is always rendered; visibility hinges on the row's .is-saved
+    // class so we can flip it in place after a disk-scan refresh without
+    // re-rendering the whole list (and losing scroll position).
     const sizeText = file.size > 0 ? formatBytes(file.size) : '—';
     const initiallyChecked = saved && isSkipSavedActive() ? '' : 'checked';
 
@@ -81,7 +83,7 @@ export function renderFileList(metaSuffix?: string): void {
     item.innerHTML = `
       <label style="display: flex; align-items: center; flex: 1; min-width: 0; cursor: pointer; gap: 14px; padding: 11px 0 11px 24px;">
         <input type="checkbox" ${initiallyChecked}>
-        <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${badge}${file.name}</span>
+        <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><span class="saved-badge">✓ Saved</span>${file.name}</span>
         <span class="file-size">${sizeText}</span>
       </label>
       <button class="download-btn" type="button" title="Download to chosen folder">↓</button>
@@ -295,6 +297,23 @@ export function refreshAllTranscribeButtons(): void {
     const file = state.files[idx];
     if (!file) return;
     const saved = isSaved(getSaveFilename(file.name));
+    refreshTranscribeButton(row, saved);
+  });
+}
+
+/**
+ * Re-evaluate every row's saved state in-place. Called after a disk-scan
+ * refresh — toggles the row's .is-saved class (which controls badge
+ * visibility via CSS) and refreshes the transcribe button tooltip.
+ */
+export function refreshAllSavedStates(): void {
+  const rows = document.querySelectorAll<HTMLElement>('#fileList .file-item');
+  rows.forEach((row) => {
+    const idx = parseInt(row.dataset['fileIndex'] ?? '', 10);
+    const file = state.files[idx];
+    if (!file) return;
+    const saved = isSaved(getSaveFilename(file.name));
+    row.classList.toggle('is-saved', saved);
     refreshTranscribeButton(row, saved);
   });
 }

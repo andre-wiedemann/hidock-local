@@ -29,6 +29,7 @@ import {
 import {
   applyFilter,
   applySkipSavedToggle,
+  refreshAllSavedStates,
   refreshAllTranscribeButtons,
   renderFileList,
   setDownloadHandler,
@@ -39,6 +40,8 @@ import { wireLogControls, log } from './ui/log.js';
 import {
   chooseDirectory,
   clearDirectoryChoice,
+  refreshSavedFromDisk,
+  setSavedRowsRefresher,
   tryRestoreDirPath
 } from './ui/save-target.js';
 import { refreshStoragePanel } from './ui/storage-panel.js';
@@ -61,6 +64,11 @@ async function loadFileListLive(silent = false): Promise<void> {
   try {
     if (!silent) log('Getting file list…', 'info');
     state.files = [];
+    // Reconcile saved-state with disk before re-rendering rows — covers
+    // the case where the user deleted a file in Finder while the app was
+    // running so the saved badge disappears on the same List Files click
+    // that surfaces the device's recordings.
+    await refreshSavedFromDisk();
     await refreshStoragePanel();
 
     const entries = await listFiles(state.device);
@@ -300,7 +308,16 @@ export async function init(): Promise<void> {
 
   // Path-based folder persistence — auto-restores the last chosen folder
   // on every startup without requiring a permission re-grant.
+  setSavedRowsRefresher(refreshAllSavedStates);
   await tryRestoreDirPath();
+
+  // If the user deletes a saved recording in Finder while the app is in
+  // background, reconcile next time the window comes back to focus.
+  window.addEventListener('focus', () => {
+    refreshSavedFromDisk().catch((err) => {
+      console.warn('focus refresh failed:', err);
+    });
+  });
 
   // Whisper panel mounts independently of USB state — the user can download
   // a model while the device is unplugged. Errors here shouldn't abort init.

@@ -9,6 +9,7 @@
 // (proxied through preload), so we get the OS-standard chooser.
 
 import { state } from '../state.js';
+import { persistSavedFiles } from '../storage/persistence.js';
 import { log } from './log.js';
 
 const PATH_STORAGE_KEY = 'hidock:dirPath';
@@ -74,6 +75,7 @@ export async function tryRestoreDirPath(): Promise<void> {
     if (exists) {
       setActivePath(stored);
       log(`Restored save folder: ${stored}`, 'info');
+      await refreshSavedFromDisk();
     } else {
       // Folder was renamed or deleted — drop the stored path silently.
       persistPath(null);
@@ -89,6 +91,7 @@ export async function chooseDirectory(): Promise<void> {
     if (!chosen) return;
     setActivePath(chosen);
     log(`Save folder set: ${chosen}`, 'success');
+    await refreshSavedFromDisk();
   } catch (err) {
     log(`Folder pick failed: ${(err as Error).message}`, 'error');
   }
@@ -97,6 +100,7 @@ export async function chooseDirectory(): Promise<void> {
 export async function clearDirectoryChoice(): Promise<void> {
   setNoActivePath();
   log('Save folder cleared — falling back to browser-download path', 'info');
+  await refreshSavedFromDisk();
 }
 
 /** Write a Blob (or its bytes) to the active save folder. */
@@ -104,6 +108,64 @@ export async function saveBlobToFolder(blob: Blob, filename: string): Promise<vo
   if (!state.dirPath) throw new Error('No folder selected');
   const buffer = await blob.arrayBuffer();
   await window.hidock.fs.writeFile(state.dirPath, filename, buffer);
+}
+
+type SavedRowsRefresher = () => void;
+let refreshSavedRowsFn: SavedRowsRefresher = () => {};
+
+/** Caller in app.ts injects a function that updates "✓ Saved" badges + T-button state. */
+export function setSavedRowsRefresher(fn: SavedRowsRefresher): void {
+  refreshSavedRowsFn = fn;
+}
+
+/**
+ * Reconcile `state.savedFiles` with what's actually on disk in the active
+ * folder. Drops entries for files the user deleted in Finder; picks up
+ * entries for files that appeared by other means (e.g. an earlier session
+ * before localStorage was cleared, or files dragged into the folder).
+ *
+ * Called on:
+ *   - app init (after the persisted dirPath is restored)
+ *   - dirPath change (Choose Folder / Clear)
+ *   - file-list reload
+ *   - window focus (so deleting in Finder while the app is in background
+ *     reflects the next time the user activates the window)
+ */
+export async function refreshSavedFromDisk(): Promise<void> {
+  if (!state.dirPath) {
+    // No folder set — clear any leftover entries; we no longer have a
+    // disk to reconcile against.
+    if (Object.keys(state.savedFiles).length > 0) {
+      state.savedFiles = {};
+      persistSavedFiles(state.savedFiles);
+      refreshSavedRowsFn();
+    }
+    return;
+  }
+  try {
+    const onDisk = await window.hidock.fs.listDir(state.dirPath);
+    const onDiskSet = new Set(onDisk);
+
+    let changed = false;
+    for (const key of Object.keys(state.savedFiles)) {
+      if (!onDiskSet.has(key)) {
+        delete state.savedFiles[key];
+        changed = true;
+      }
+    }
+    for (const name of onDisk) {
+      if (!state.savedFiles[name]) {
+        state.savedFiles[name] = { size: 0, savedAt: '' };
+        changed = true;
+      }
+    }
+    if (changed) {
+      persistSavedFiles(state.savedFiles);
+      refreshSavedRowsFn();
+    }
+  } catch (err) {
+    console.warn('Refresh saved-from-disk failed:', err);
+  }
 }
 
 function setDisplay(id: string, value: string): void {

@@ -590,6 +590,10 @@ input[type="checkbox"]:focus-visible {
   margin-right: 8px;
   white-space: nowrap;
 }
+/* Hide the always-rendered "✓ Saved" badge until the row is is-saved.
+   See file-list.ts: the badge is in the DOM at all times so we can flip
+   visibility via class toggles after a disk-scan refresh. */
+.file-item:not(.is-saved) .saved-badge { display: none; }
 .file-item.is-saved { color: var(--text-dim); }
 .file-item.is-saved:not(.success):not(.error):not(.downloading)::before {
   content: '';
