@@ -3,21 +3,16 @@ import {
   CMD_GET_BATTERY_STATUS,
   CMD_GET_RECORDING_QUALITY,
   CMD_GET_SETTINGS,
-  CMD_GROUP_STORAGE,
   CMD_GROUP_SYSTEM,
   CMD_QUERY_DEVICE_INFO,
   CMD_QUERY_DEVICE_TIME,
+  CMD_QUERY_FILE_LIST,
   CMD_READ_CARD_INFO,
   CMD_SET_DEVICE_TIME,
   ClaimedDevice,
   SUBCMD_DOWNLOAD_FILE,
-  SUBCMD_FILE_LIST,
-  SUBCMD_STORAGE_INFO,
-  SUBCMD_STORAGE_INIT,
-  drainInEndpoint,
   resetSequence,
-  sendCmd,
-  sendCommand
+  sendCmd
 } from './protocol.js';
 import {
   ParsedFileEntry,
@@ -76,16 +71,13 @@ export async function runInitSequence(device: ClaimedDevice): Promise<void> {
 
 /** List recordings on the device, sorted latest-first. */
 export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[]> {
-  // Single FILE_LIST request. Param 0x0E goes in byte 7 (see protocol.ts).
-  // Experiments to "double-call" or drain-then-call broke the response
-  // entirely on this firmware (returns nothing). The HiDock's file-list
-  // command is one-shot per session-state.
-  const response = await sendCommand(
+  // Uses the v2 sender so the sequence number auto-increments off the
+  // counter the init sequence already advanced. Hard-coding seq=14
+  // (the legacy compat behavior) collides with init's seq=1-7 and
+  // appears to put the device into the truncated-response state.
+  const response = await sendCmd(
     device,
-    CMD_GROUP_SYSTEM,
-    SUBCMD_FILE_LIST,
-    0x0e,
-    0,
+    CMD_QUERY_FILE_LIST,
     null,
     { multiChunk: true, readSize: 32768 }
   );
@@ -109,34 +101,18 @@ export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[
 }
 
 /**
- * Query storage usage. Some firmware combos drop the first response after a
- * reconnect, so we retry up to 3 times, re-sending STORAGE_INIT each round
- * to flush the IN endpoint. Storage info correctness also seems to gate
- * the FILE_LIST response size, so failing here silently propagates into
- * a smaller-than-expected file list — drain stale bytes before each
- * attempt so the response actually lands in our read window.
+ * Query storage usage. Init already runs READ_CARD_INFO, so this is the
+ * on-demand refresh path (called from the storage panel + before each
+ * List Files). Single sendCmd via the auto-increment counter — the
+ * legacy retry/drain dance was working around the sequence-collision
+ * issue we now sidestep at the source.
  */
 export async function getStorageInfo(
   device: ClaimedDevice
 ): Promise<StorageCapacity | null> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) await sleep(250);
-    await drainInEndpoint(device, 200);
-    await sendCommand(device, CMD_GROUP_STORAGE, SUBCMD_STORAGE_INIT, 3, 0);
-    const response = await sendCommand(
-      device,
-      CMD_GROUP_SYSTEM,
-      SUBCMD_STORAGE_INFO,
-      3,
-      0
-    );
-    if (!response || response.length < 16) continue;
-    const interp = tryInterpretStorage(response.slice(12));
-    if (interp) return interp;
-    // Got bytes but couldn't interpret — bail rather than spin forever.
-    return null;
-  }
-  return null;
+  const response = await sendCmd(device, CMD_READ_CARD_INFO);
+  if (!response || response.length < 16) return null;
+  return tryInterpretStorage(response.slice(12));
 }
 
 /** Hook for the UI to render speed / ETA while a download is in flight. */
