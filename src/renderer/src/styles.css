@@ -431,6 +431,17 @@ input[type="checkbox"]:focus-visible {
   text-overflow: ellipsis;
 }
 
+/* ─── File panel action bar (List Files / Download / Stop) ─── */
+.file-actions {
+  display: flex;
+  gap: 8px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+  flex-wrap: wrap;
+}
+.file-actions button { padding: 9px 14px; }
+
 /* ─── File list ──────────────────────────────────── */
 .file-controls {
   display: flex;
@@ -579,6 +590,10 @@ input[type="checkbox"]:focus-visible {
   margin-right: 8px;
   white-space: nowrap;
 }
+/* Hide the always-rendered "✓ Saved" badge until the row is is-saved.
+   See file-list.ts: the badge is in the DOM at all times so we can flip
+   visibility via class toggles after a disk-scan refresh. */
+.file-item:not(.is-saved) .saved-badge { display: none; }
 .file-item.is-saved { color: var(--text-dim); }
 .file-item.is-saved:not(.success):not(.error):not(.downloading)::before {
   content: '';
@@ -748,6 +763,63 @@ input[type="checkbox"]:focus-visible {
   color: #1a0000;
 }
 
+/* ─── Per-row download button ────────────────── */
+.file-item .download-btn {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--text-muted);
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  margin: 0 6px 0 0;
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.file-item .download-btn:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.file-item .download-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+/* Hide once the file is on disk or while download/error flows handle it */
+.file-item.is-saved .download-btn,
+.file-item.success .download-btn,
+.file-item.error .download-btn,
+.file-item.downloading .download-btn { display: none; }
+
+/* ─── Per-row transcribe button ──────────────── */
+.file-item .transcribe-btn {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--text-muted);
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  margin: 0 6px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.file-item .transcribe-btn:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.file-item .transcribe-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
 /* ─── Per-row play button ────────────────────── */
 .file-item .play-btn {
   background: transparent;
@@ -776,6 +848,36 @@ input[type="checkbox"]:focus-visible {
   animation: pulse 1.2s ease-in-out infinite;
 }
 .file-item .play-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* Row tinted while it's the active preview, even when paused.
+   Slightly dimmer than .downloading so the two states don't blur together. */
+.file-item.is-current-preview {
+  background: rgba(255, 125, 26, 0.05);
+}
+.file-item.is-current-preview .play-btn {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Stronger highlight when the preview is actively playing. */
+.file-item.is-playing {
+  background: var(--accent-soft);
+}
+.file-item.is-playing::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+.file-item.is-playing .play-btn {
+  color: #1a0e00;
+  background: var(--accent);
+  border-color: var(--accent);
+}
 
 /* ─── Mini player ────────────────────────────── */
 .mini-player {
@@ -865,6 +967,48 @@ input[type="checkbox"]:focus-visible {
   white-space: nowrap;
 }
 
+/* ─── Transcript panel ─────────────────────────── */
+.transcript-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+.transcript-filename {
+  color: var(--text);
+  font-weight: 500;
+  word-break: break-all;
+}
+.transcript-detail {
+  color: var(--text-muted);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 9.5px;
+  font-weight: 600;
+  align-self: center;
+}
+.transcript-meta button {
+  margin-left: auto;
+  padding: 6px 12px;
+  font-size: 9.5px;
+}
+.transcript-text {
+  font-family: 'Instrument Sans', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  padding: 18px 22px;
+  max-height: 360px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
 /* ─── Log ─────────────────────────────────────────── */
 .log-toggle-row {
   display: flex;
@@ -893,6 +1037,192 @@ input[type="checkbox"]:focus-visible {
 .log-success { color: var(--success); }
 .log-info    { color: var(--info); }
 .log-warning { color: var(--warning); }
+
+/* ─── Collapsible panels ──────────────────────────── */
+.panel.collapsible .panel-header {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+.panel.collapsible .panel-header:hover {
+  background: var(--surface-2);
+}
+.panel.collapsible .panel-header .collapse-chevron {
+  font-size: 8px;
+  color: var(--text-dim);
+  transition: transform 0.2s, color 0.15s;
+  margin-left: 12px;
+}
+.panel.collapsible:hover .panel-header .collapse-chevron { color: var(--text-muted); }
+.panel.collapsible.collapsed .panel-header .collapse-chevron {
+  transform: rotate(-90deg);
+}
+.panel.collapsible.collapsed .panel-body { display: none; }
+.panel.collapsible.collapsed { margin-bottom: 12px; }
+
+/* ─── Transcription panel ─────────────────────────── */
+.whisper-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+.whisper-summary .label {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.whisper-summary .path {
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.model-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.model-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 11px 18px;
+  border-bottom: 1px solid var(--line);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  position: relative;
+}
+.model-row:last-child { border-bottom: none; }
+.model-row.is-default {
+  background: linear-gradient(180deg, rgba(93, 212, 155, 0.04), transparent);
+  border-left: 2px solid var(--success);
+}
+.model-row.is-downloaded:not(.is-default) {
+  border-left: 2px solid transparent;
+}
+
+.model-row .model-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.model-row .model-label .name {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.model-row .model-label .size {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.model-row .model-status {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 96px;
+  text-align: right;
+}
+.model-row.is-default .model-status { color: var(--success); }
+.model-row .model-status .dl-pct { color: var(--accent); }
+
+.model-row .model-actions {
+  display: flex;
+  gap: 6px;
+}
+.model-row .model-actions button {
+  padding: 6px 12px;
+  font-size: 9.5px;
+}
+
+.model-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--surface-3);
+}
+.model-progress .bar-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-warm));
+  transition: width 0.2s;
+}
+
+.whisper-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  align-items: center;
+}
+.whisper-options .toggle-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 7px 12px;
+  border: 1px solid var(--line-strong);
+  user-select: none;
+}
+.whisper-options .toggle-inline:has(input:checked) {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+.whisper-options .toggle-inline input { width: 14px; height: 14px; }
+.whisper-options .toggle-inline:has(input:disabled) { opacity: 0.4; cursor: not-allowed; }
+
+.whisper-options .lang-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-3);
+  font-family: 'JetBrains Mono', monospace;
+}
+.whisper-options .lang-input span {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.whisper-options .lang-input input {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  width: 60px;
+  padding: 4px 0;
+  outline: none;
+}
 
 /* ─── Scrollbars ──────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }

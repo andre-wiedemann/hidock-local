@@ -111,7 +111,11 @@ export async function sendCommand(
       timeoutMs
     );
     if (result.data && result.data.byteLength > 0) {
-      return new Uint8Array(result.data.buffer);
+      return new Uint8Array(
+        result.data.buffer,
+        result.data.byteOffset,
+        result.data.byteLength
+      ).slice();
     }
   } catch {
     // Treat timeouts as no-data; the caller may retry.
@@ -125,28 +129,39 @@ async function readMultipleChunks(
 ): Promise<Uint8Array | null> {
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
-  const MAX_ATTEMPTS = 10;
+  // Each transferIn pulls up to 16 KB. 32 attempts × 16 KB = 512 KB ceiling
+  // — matches readSize=131072 (file list) with margin for short reads.
+  const MAX_ATTEMPTS = 32;
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (totalBytes >= readSize) break;
+    const remaining = Math.min(readSize - totalBytes, 16384);
     try {
-      const remaining = Math.min(readSize - totalBytes, 16384);
+      // First read gets a longer window because the device may take a
+      // beat to assemble the response. Subsequent reads use 3s — the
+      // older 1s budget would cut off mid-list when the device's flash
+      // scan paused, dropping tail entries silently.
       const result = await raceTimeout(
         device.transferIn(HIDOCK_P1_IN_ENDPOINT, remaining),
-        attempt === 0 ? 5000 : 1000
+        attempt === 0 ? 5000 : 3000
       );
 
-      if (result.data && result.data.byteLength > 0) {
-        const chunk = new Uint8Array(result.data.buffer);
-        chunks.push(chunk);
-        totalBytes += chunk.length;
+      if (!result.data || result.data.byteLength === 0) break;
 
-        // Short read or full quota reached → we're done.
-        if (chunk.length < 512) break;
-        if (totalBytes >= readSize) break;
-      } else {
-        break;
-      }
+      const chunk = new Uint8Array(
+        result.data.buffer,
+        result.data.byteOffset,
+        result.data.byteLength
+      ).slice();
+      chunks.push(chunk);
+      totalBytes += chunk.length;
+
+      // Don't break on short reads — the device sometimes fragments the
+      // response into <512-byte trailing pieces while there's still data
+      // queued up. Rely on timeouts and the empty-data branch above to
+      // detect the actual end of the response.
     } catch {
+      // Timeout — treat as end-of-response.
       break;
     }
   }
@@ -168,4 +183,35 @@ function raceTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
       setTimeout(() => reject(new Error('timeout')), ms)
     )
   ]);
+}
+
+/**
+ * Discard any bytes still queued on the device's IN endpoint from
+ * previous commands. We've observed that small (< response-size) reads
+ * leave trailing data in the buffer; the next command's response then
+ * gets queued *behind* those stale bytes, our short read pulls only the
+ * leftovers, and the real response times out.
+ *
+ * Call this before any sendCommand sequence whose response correctness
+ * depends on a clean buffer (storage info, file list).
+ */
+export async function drainInEndpoint(
+  device: ClaimedDevice,
+  budgetMs = 500
+): Promise<number> {
+  let drained = 0;
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline) {
+    try {
+      const result = await raceTimeout(
+        device.transferIn(HIDOCK_P1_IN_ENDPOINT, 16384),
+        50
+      );
+      if (!result.data || result.data.byteLength === 0) break;
+      drained += result.data.byteLength;
+    } catch {
+      break;
+    }
+  }
+  return drained;
 }

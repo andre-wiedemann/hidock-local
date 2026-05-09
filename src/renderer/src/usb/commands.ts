@@ -9,18 +9,21 @@ import {
   SUBCMD_STORAGE_INIT,
   sendCommand
 } from './protocol.js';
+import { drainInEndpoint } from './protocol.js';
 import {
   ParsedFileEntry,
   StorageCapacity,
   parseFileListResponse,
-  stripChunkHeader,
+  stripAllProtocolHeaders,
   tryInterpretStorage
 } from './parsers.js';
 
 /** List recordings on the device, sorted latest-first. */
 export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[]> {
-  // Param 0x0E goes in byte 7 (see protocol.ts). 32 KB is enough for ~250
-  // entries with the full record format; bump if you ever see truncation.
+  // Single FILE_LIST request. Param 0x0E goes in byte 7 (see protocol.ts).
+  // Experiments to "double-call" or drain-then-call broke the response
+  // entirely on this firmware (returns nothing). The HiDock's file-list
+  // command is one-shot per session-state.
   const response = await sendCommand(
     device,
     CMD_GROUP_SYSTEM,
@@ -31,19 +34,38 @@ export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[
     { multiChunk: true, readSize: 32768 }
   );
   if (!response || response.length <= 12) return [];
+  /* eslint-disable no-console */
+  console.log(`[file-list] received ${response.length} bytes from device`);
+  // Hunt for filename-shaped substrings the parser might miss + count
+  // recordings per day so we can compare with the standalone HTML's
+  // panel directly when entries go missing.
+  const text = new TextDecoder('latin1').decode(response.slice(12));
+  const allMatches = text.match(/\d{4}[A-Za-z]{3}\d{2}/g) ?? [];
+  const dayCounts: Record<string, number> = {};
+  for (const m of allMatches) dayCounts[m] = (dayCounts[m] ?? 0) + 1;
+  console.log(
+    `[file-list] raw "YYYYMonDD" substrings in response: ${allMatches.length} ` +
+    `(${Object.keys(dayCounts).length} unique days)`
+  );
+  console.log('[file-list] day counts:', dayCounts);
+  /* eslint-enable no-console */
   return parseFileListResponse(response);
 }
 
 /**
  * Query storage usage. Some firmware combos drop the first response after a
  * reconnect, so we retry up to 3 times, re-sending STORAGE_INIT each round
- * to flush the IN endpoint.
+ * to flush the IN endpoint. Storage info correctness also seems to gate
+ * the FILE_LIST response size, so failing here silently propagates into
+ * a smaller-than-expected file list — drain stale bytes before each
+ * attempt so the response actually lands in our read window.
  */
 export async function getStorageInfo(
   device: ClaimedDevice
 ): Promise<StorageCapacity | null> {
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt > 0) await sleep(250);
+    await drainInEndpoint(device, 200);
     await sendCommand(device, CMD_GROUP_STORAGE, SUBCMD_STORAGE_INIT, 3, 0);
     const response = await sendCommand(
       device,
@@ -126,10 +148,11 @@ export async function downloadFile(
   packet.set(filenameBytes, 12);
   await device.transferOut(HIDOCK_P1_OUT_ENDPOINT, packet as BufferSource);
 
-  // 5. Read chunks. The chunk loop is deliberately resilient:
-  //    - timeouts on chunk 0 fail fast (device didn't respond at all)
-  //    - timeouts after that just count toward the empty-chunks budget
-  //    - external aborts return whatever we've accumulated so far
+  // 5. Read chunks. We accumulate raw device bytes here without trying to
+  //    strip the per-frame protocol header — that gets done in one pass
+  //    over the assembled buffer below. Per-chunk stripping was fragile:
+  //    a single short transferIn read pushed every subsequent chunk's
+  //    header off byte 0 of its view and the magic-byte check missed.
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
   let chunkNumber = 0;
@@ -148,7 +171,11 @@ export async function downloadFile(
         rejectAfter<USBInTransferResult>(timeout)
       ]);
       if (result.data && result.data.byteLength > 0) {
-        chunk = new Uint8Array(result.data.buffer);
+        chunk = new Uint8Array(
+          result.data.buffer,
+          result.data.byteOffset,
+          result.data.byteLength
+        ).slice();
       }
     } catch (err) {
       if ((err as Error).message === 'timeout') {
@@ -166,32 +193,27 @@ export async function downloadFile(
       continue;
     }
 
+    chunks.push(chunk);
+    totalBytes += chunk.length;
     chunkNumber++;
-    const stripped = stripChunkHeader(chunk);
-    if (stripped.length === 0) {
-      consecutiveEmpty++;
-      continue;
-    }
-
-    chunks.push(stripped);
-    totalBytes += stripped.length;
     consecutiveEmpty = 0;
-    options.onProgress?.({ bytesReceived: totalBytes, chunkBytes: stripped.length });
+    options.onProgress?.({ bytesReceived: totalBytes, chunkBytes: chunk.length });
   }
 
   if (totalBytes === 0) throw new Error('No data received');
 
-  const out = new Uint8Array(totalBytes);
+  // Assemble + strip every protocol header in one sweep.
+  const raw = new Uint8Array(totalBytes);
   let offset = 0;
   for (const c of chunks) {
-    out.set(c, offset);
+    raw.set(c, offset);
     offset += c.length;
   }
-  return out;
+  return stripAllProtocolHeaders(raw);
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function rejectAfter<T>(ms: number): Promise<T> {

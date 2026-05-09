@@ -29,7 +29,11 @@ import {
 import {
   applyFilter,
   applySkipSavedToggle,
+  refreshAllPlayingIndicators,
+  refreshAllSavedStates,
+  refreshAllTranscribeButtons,
   renderFileList,
+  setDownloadHandler,
   setRetryHandler,
   setVisibleSelected
 } from './ui/file-list.js';
@@ -37,14 +41,21 @@ import { wireLogControls, log } from './ui/log.js';
 import {
   chooseDirectory,
   clearDirectoryChoice,
-  tryRestoreDirHandle
+  refreshSavedFromDisk,
+  setSavedRowsRefresher,
+  tryRestoreDirPath
 } from './ui/save-target.js';
 import { refreshStoragePanel } from './ui/storage-panel.js';
-import { wirePreviewClose } from './ui/preview.js';
+import { onPreviewStateChange, wirePreviewClose } from './ui/preview.js';
+import { wireCollapsible } from './ui/collapsible.js';
 import {
   downloadAllOrZip,
   downloadSingle
 } from './downloader.js';
+import { initWhisperPanel } from './whisper/settings-panel.js';
+import { subscribe as subscribeWhisper } from './whisper/store.js';
+import { setDownloadFn, transcribeFile } from './whisper/transcribe-flow.js';
+import { getCurrentTranscriptFile } from './whisper/transcript-panel.js';
 import { HIDOCK_P1_PRODUCT_ID, HIDOCK_P1_VENDOR_ID } from '../../shared/types.js';
 
 async function loadFileListLive(silent = false): Promise<void> {
@@ -55,6 +66,11 @@ async function loadFileListLive(silent = false): Promise<void> {
   try {
     if (!silent) log('Getting file list…', 'info');
     state.files = [];
+    // Reconcile saved-state with disk before re-rendering rows — covers
+    // the case where the user deleted a file in Finder while the app was
+    // running so the saved badge disappears on the same List Files click
+    // that surfaces the device's recordings.
+    await refreshSavedFromDisk();
     await refreshStoragePanel();
 
     const entries = await listFiles(state.device);
@@ -172,8 +188,13 @@ function wireFileListControls(): void {
     setVisibleSelected(true);
   });
 
-  // Per-row retry → single-file download.
+  // Per-row retry + download buttons both call downloadSingle. The
+  // transcribe flow uses the same fn for its auto-download-on-demand
+  // path; injected here to avoid a circular import between downloader.ts
+  // and whisper/transcribe-flow.ts.
   setRetryHandler((file) => downloadSingle(file));
+  setDownloadHandler((file) => downloadSingle(file));
+  setDownloadFn((file) => downloadSingle(file));
 }
 
 function wireDownloadButtons(): void {
@@ -205,13 +226,9 @@ function applyExt(name: string): string {
 function wireSaveTargetButtons(): void {
   document.getElementById('chooseFolderBtn')!.addEventListener('click', chooseDirectory);
   document.getElementById('clearFolderBtn')!.addEventListener('click', clearDirectoryChoice);
-
-  if (!('showDirectoryPicker' in window)) {
-    const btn = document.getElementById('chooseFolderBtn') as HTMLButtonElement | null;
-    if (btn) btn.style.display = 'none';
-    const path = document.getElementById('saveTargetPath');
-    if (path) path.textContent = 'Browser downloads only · directory picker unavailable in this browser';
-  }
+  // The native folder picker is always available in Electron — no need to
+  // hide the Choose Folder button (the standalone HTML's browser-fallback
+  // case doesn't apply here).
 }
 
 function wireUsbLifecycleEvents(): void {
@@ -275,6 +292,32 @@ export async function init(): Promise<void> {
   wireSaveTargetButtons();
   wirePreviewClose();
   wireUsbLifecycleEvents();
+  // Config panel collapses to free vertical space once the user has set
+  // their preferences. Default expanded — most users tweak something on
+  // first run.
+  wireCollapsible({
+    panelId: 'configPanel',
+    headerId: 'configPanelHeader',
+    storageKey: 'hidock:config:panelCollapsed',
+    defaultCollapsed: false
+  });
+  // Transcript panel — hidden until the first transcription, then
+  // collapsible. Default expanded so the user immediately sees the
+  // result; persists their choice afterward.
+  wireCollapsible({
+    panelId: 'transcriptPanel',
+    headerId: 'transcriptPanelHeader',
+    storageKey: 'hidock:transcript:panelCollapsed',
+    defaultCollapsed: false
+  });
+  // Re-transcribe button — re-enqueues whatever recording is currently
+  // displayed in the transcript panel. Useful after switching to a
+  // better model or hitting an empty/garbled result.
+  document.getElementById('reTranscribeBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const file = getCurrentTranscriptFile();
+    if (file) transcribeFile(file);
+  });
 
   // Cached list shows immediately, even pre-connect.
   restoreCachedFileList();
@@ -282,9 +325,34 @@ export async function init(): Promise<void> {
     applyFilter();
   }
 
-  if ('showDirectoryPicker' in window) {
-    await tryRestoreDirHandle();
-  }
+  // Path-based folder persistence — auto-restores the last chosen folder
+  // on every startup without requiring a permission re-grant.
+  setSavedRowsRefresher(refreshAllSavedStates);
+  await tryRestoreDirPath();
+
+  // If the user deletes a saved recording in Finder while the app is in
+  // background, reconcile next time the window comes back to focus.
+  window.addEventListener('focus', () => {
+    refreshSavedFromDisk().catch((err) => {
+      console.warn('focus refresh failed:', err);
+    });
+  });
+
+  // Whisper panel mounts independently of USB state — the user can download
+  // a model while the device is unplugged. Errors here shouldn't abort init.
+  initWhisperPanel().catch((err) => {
+    console.error('Whisper panel init failed:', err);
+  });
+
+  // When the default model changes (download finishes, user switches
+  // default, model is deleted), refresh every visible T button so users
+  // don't have to re-list files to see them enable.
+  subscribeWhisper(() => refreshAllTranscribeButtons());
+
+  // Sync per-row play indicators whenever the mini-player starts, pauses,
+  // resumes, or closes — including pause/play triggered from the
+  // mini-player's own controls.
+  onPreviewStateChange(refreshAllPlayingIndicators);
 
   // Auto-reconnect runs last so the UI is fully wired by the time the device
   // call returns.

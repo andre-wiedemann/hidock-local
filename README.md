@@ -87,6 +87,44 @@ chmod +x HiDock-Local-*.AppImage
 
 That's it. Re-run any time; already-downloaded files are marked and skipped automatically (toggle in the file controls).
 
+## Local transcription
+
+HiDock Local ships with a bundled `whisper-cli` (whisper.cpp v1.7.4) and runs transcription entirely on your machine — no cloud, no API keys. Output files (`.txt`, `.vtt`, `.json`) are written next to the source MP3 in your chosen folder.
+
+### Setup
+
+1. Open the **Transcription** panel (above Config) and pick a model.
+2. Click **Download**. Models are stored under `<userData>/models/ggml-<name>.bin`. The picker shows real-time progress and you can cancel mid-download.
+3. The first model you download is auto-selected as the default. Switch the default any time with **Set Default**.
+
+### Models
+
+| Model              | Size     | Notes                                              |
+|--------------------|----------|----------------------------------------------------|
+| `tiny.en` / `tiny` | 75 MB    | Fast, lower accuracy — good for quick checks       |
+| `base.en` / `base` | 142 MB   | Balanced default for English voice memos           |
+| `small.en` / `small` | 466 MB | Better accuracy on noisy or fast speech            |
+| `large-v3-turbo-q5_0` | 574 MB | Recommended quality/speed for Apple Silicon       |
+| `medium.en`        | 1.5 GB   | High quality. Slow on CPU; reasonable on Metal     |
+| `large-v3-turbo`   | 1.5 GB   | Faster than large-v3 with similar accuracy         |
+| `large-v3`         | 2.9 GB   | Best multilingual accuracy. Slow without GPU       |
+
+On Apple Silicon, whisper.cpp uses the Metal GPU automatically — transcription of a 1-hour recording typically lands in 2–5 min depending on model. CPU-only Linux/Windows runs slower; expect ~15–30 min for the same input on `base.en`.
+
+### Triggering transcription
+
+- **Per-file** — click the small `T` button next to the play button on any downloaded row.
+- **Auto-transcribe** — toggle on in the Transcription panel; every file gets transcribed immediately after it finishes downloading.
+- **Output formats** — toggle `.txt` / `.vtt` / `.json` independently in the Transcription panel. At least one must be enabled.
+
+### Things to know
+
+- Transcription requires a folder set via **Choose Folder…** so output files have somewhere to land.
+- Auto-transcribe is queued (one transcription at a time). Multi-file batches don't fan out into parallel whisper processes that would blow up RAM.
+- `T` button is disabled until both a model is downloaded AND the file is on disk. Hover for the specific reason.
+- Models live under your OS's per-user data dir (macOS: `~/Library/Application Support/HiDock Local/models/`). You can manage them entirely from the Transcription panel — download, set default, delete.
+- All transcription is local. Nothing leaves your machine. The model file itself was downloaded once from Hugging Face by your action; no telemetry beyond that initial fetch.
+
 ## Architecture
 
 ```

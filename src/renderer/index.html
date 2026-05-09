@@ -40,9 +40,23 @@
         </div>
       </section>
 
+      <section class="panel collapsible" id="whisperPanel">
+        <div class="panel-header" id="whisperPanelHeader" role="button" tabindex="0">
+          Transcription
+          <span class="meta" id="whisperPanelMeta">whisper.cpp · local</span>
+          <span class="collapse-chevron" aria-hidden="true">▼</span>
+        </div>
+        <div class="panel-body" id="whisperPanelBody">
+          <div class="whisper-summary"><span class="label">Loading…</span></div>
+        </div>
+      </section>
+
       <div id="downloadSection" style="display: none">
-        <section class="panel">
-          <div class="panel-header">Config</div>
+        <section class="panel collapsible" id="configPanel">
+          <div class="panel-header" id="configPanelHeader" role="button" tabindex="0">
+            Config
+            <span class="collapse-chevron" aria-hidden="true">▼</span>
+          </div>
           <div class="panel-body">
             <div class="save-target" id="saveTarget">
               <span class="label">Save Target</span>
@@ -70,13 +84,6 @@
                 <span class="field-label">Auto-save</span>
                 <input type="checkbox" id="autoSave" checked />
               </label>
-            </div>
-
-            <div class="btn-row">
-              <button id="listFilesBtn">List Files</button>
-              <button id="downloadAllBtn" class="primary">Download All</button>
-              <button id="downloadSelectedBtn">Download Selected</button>
-              <button id="stopBtn" class="danger" style="display: none">Stop</button>
             </div>
 
             <div class="info-banner" id="zipInfo" style="display: none">
@@ -128,9 +135,31 @@
           <div id="zipItems"></div>
         </section>
 
+        <section class="panel collapsible" id="transcriptPanel" style="display: none">
+          <div class="panel-header" id="transcriptPanelHeader" role="button" tabindex="0">
+            Transcript
+            <span class="meta" id="transcriptPanelMeta"></span>
+            <span class="collapse-chevron" aria-hidden="true">▼</span>
+          </div>
+          <div class="panel-body">
+            <div class="transcript-meta">
+              <span class="transcript-filename" id="transcriptFilename">—</span>
+              <span class="transcript-detail" id="transcriptDetail"></span>
+              <button id="reTranscribeBtn" type="button" style="display: none;">Re-transcribe</button>
+            </div>
+            <div class="transcript-text" id="transcriptText"></div>
+          </div>
+        </section>
+
         <section class="panel">
           <div class="panel-header">
             Files <span class="meta" id="filesPanelMeta"></span>
+          </div>
+          <div class="file-actions" id="fileActions">
+            <button id="listFilesBtn">List Files</button>
+            <button id="downloadAllBtn" class="primary">Download All</button>
+            <button id="downloadSelectedBtn">Download Selected</button>
+            <button id="stopBtn" class="danger" style="display: none">Stop</button>
           </div>
           <div id="fileSelectionControls" class="file-controls" style="display: none">
             <input type="text" id="searchInput" class="search-input" placeholder="Filter…" autocomplete="off" />

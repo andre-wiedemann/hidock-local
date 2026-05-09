@@ -175,6 +175,11 @@ export function tryInterpretStorage(payload: Uint8Array): StorageCapacity | null
  * first chunk, leaving 12 bytes of garbage every 8192 bytes throughout the
  * file. That destroys MP3 framing and pushes entropy to ~7.77/8 — leading
  * the broken files to be misdiagnosed as "encrypted HDA".
+ *
+ * Used by tests + as a sanity helper. The download path uses
+ * `stripAllProtocolHeaders` over the assembled stream instead, which is
+ * resilient to any chunk-fragmentation behavior the underlying WebUSB
+ * implementation might exhibit.
  */
 export function stripChunkHeader(chunk: Uint8Array): Uint8Array {
   if (
@@ -187,4 +192,45 @@ export function stripChunkHeader(chunk: Uint8Array): Uint8Array {
     return chunk.slice(12);
   }
   return chunk;
+}
+
+/**
+ * Strip every 12-byte protocol header found in an assembled download
+ * stream. Matches the full 12-byte signature
+ * `12 34 00 05 00 00 00 59 00 00 1f f4` (cmd id + magic length 0x1ff4),
+ * which is unique enough that random MP3 collisions are negligible.
+ *
+ * This runs once on the concatenated raw bytes — it doesn't matter whether
+ * the WebUSB transport returned each device-side chunk in one or many
+ * transferIn calls, or whether some buffer offset weirdness moved the
+ * magic off the start of a chunk view. We just sweep the whole buffer.
+ */
+export function stripAllProtocolHeaders(raw: Uint8Array): Uint8Array {
+  const out = new Uint8Array(raw.length);
+  let outIdx = 0;
+  let lastEnd = 0;
+  let i = 0;
+  while (i <= raw.length - 12) {
+    if (
+      raw[i] === 0x12 && raw[i + 1] === 0x34 &&
+      raw[i + 2] === 0x00 && raw[i + 3] === 0x05 &&
+      raw[i + 7] === 0x59 && raw[i + 10] === 0x1f && raw[i + 11] === 0xf4
+    ) {
+      // Copy everything between the last header (or start) and this one.
+      if (i > lastEnd) {
+        out.set(raw.subarray(lastEnd, i), outIdx);
+        outIdx += i - lastEnd;
+      }
+      i += 12;
+      lastEnd = i;
+    } else {
+      i++;
+    }
+  }
+  // Trailing bytes after the last header.
+  if (lastEnd < raw.length) {
+    out.set(raw.subarray(lastEnd), outIdx);
+    outIdx += raw.length - lastEnd;
+  }
+  return out.slice(0, outIdx);
 }

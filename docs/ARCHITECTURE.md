@@ -7,11 +7,13 @@ This document is a guided tour of the source tree — what lives where, why it's
 ```
 hidock-local/
 ├── src/
-│   ├── main/         Electron main process
+│   ├── main/         Electron main process (USB perms, whisper subprocess)
 │   ├── preload/      contextBridge (intentionally tiny)
 │   ├── renderer/     Where the WebUSB conversation actually happens
-│   └── shared/       Constants used across processes
+│   └── shared/       Constants + IPC types used across processes
 ├── tests/            Vitest unit tests + byte fixtures
+├── tools/            Build helpers (icons, whisper.cpp fetcher)
+├── resources/        Per-platform native binaries (whisper-cli, gitignored)
 └── out/              Build output (electron-vite + electron-builder)
 ```
 
@@ -47,13 +49,18 @@ src/renderer/src/
 │   ├── protocol.ts         buildCommandPacket, sendCommand, constants
 │   ├── parsers.ts          File-list, storage-info, chunk-stripper (PURE)
 │   └── commands.ts         Higher-level: listFiles, downloadFile, getStorage
+├── whisper/
+│   ├── api.ts              Typed window.hidock.whisper accessor
+│   ├── store.ts            Pref state (default model, formats, language)
+│   ├── settings-panel.ts   Model picker + auto-transcribe toggle UI
+│   └── transcribe-flow.ts  Manual + auto-transcribe orchestration
 ├── storage/
 │   ├── settings.ts         localStorage persistence for user prefs
 │   └── persistence.ts      savedFiles map, file-list cache, IDB helpers
 ├── ui/
 │   ├── connection.ts       Connection status pill
 │   ├── storage-panel.ts    Used / total / % bar
-│   ├── transfer.ts         Progress bar, speed, ETA
+│   ├── transfer.ts         Progress bar, speed, ETA, transcribe overlay
 │   ├── file-list.ts        Day-grouped recording list, selection, filtering
 │   ├── save-target.ts      "Choose Folder" flow + dirHandle restore
 │   ├── saved-files-panel.ts  Appended row per saved file
@@ -63,6 +70,14 @@ src/renderer/src/
     ├── filename.ts         Timestamp parsing, day grouping, .mp3 ext
     ├── format.ts           Byte / duration formatters
     └── speed-tracker.ts    Rolling-window byte-rate
+
+src/main/whisper/
+├── binary.ts               Resolve whisper-cli path (dev vs packaged)
+├── catalog.ts              Static list of supported ggml models + URLs
+├── download.ts             Streamed model download with cancel + progress
+├── models.ts               listModels / deleteModel + on-disk presence
+├── transcribe.ts           ffmpeg → whisper-cli pipeline + progress parse
+└── ipc.ts                  whisper:* IPC handlers
 ```
 
 The split is **layered**, with imports only flowing one way:

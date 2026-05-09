@@ -4,14 +4,21 @@
 import { state, RecordingFile } from '../state.js';
 import { dayKey, dayLabel, applyExtensionPreference } from '../util/filename.js';
 import { formatBytes } from '../util/format.js';
-import { previewFile } from './preview.js';
+import { previewFile, togglePreviewPlayback } from './preview.js';
+import { getPrefs } from '../whisper/store.js';
+import { viewOrTranscribe } from '../whisper/transcribe-flow.js';
 
-type RetryHandler = (file: RecordingFile) => void | Promise<void>;
+type FileHandler = (file: RecordingFile) => void | Promise<void>;
 
-let retryHandler: RetryHandler = () => {};
+let retryHandler: FileHandler = () => {};
+let downloadHandler: FileHandler = () => {};
 
-export function setRetryHandler(handler: RetryHandler): void {
+export function setRetryHandler(handler: FileHandler): void {
   retryHandler = handler;
+}
+
+export function setDownloadHandler(handler: FileHandler): void {
+  downloadHandler = handler;
 }
 
 function getSaveFilename(name: string): string {
@@ -57,17 +64,31 @@ export function renderFileList(metaSuffix?: string): void {
     item.dataset['dayKey'] = k || 'unknown';
     item.dataset['fileIndex'] = String(index);
 
-    const badge = saved ? '<span class="saved-badge">✓ Saved</span>' : '';
+    // Badge is always rendered; visibility hinges on the row's .is-saved
+    // class so we can flip it in place after a disk-scan refresh without
+    // re-rendering the whole list (and losing scroll position).
     const sizeText = file.size > 0 ? formatBytes(file.size) : '—';
     const initiallyChecked = saved && isSkipSavedActive() ? '' : 'checked';
+
+    const hasModel = !!getPrefs().defaultModel;
+    // T is enabled whenever a model + folder are set; if the file isn't
+    // on disk yet, the transcribe flow downloads it first automatically.
+    const canTranscribe = hasModel;
+    const transcribeTitle = !hasModel
+      ? 'Pick a default model in the Transcription panel'
+      : saved
+        ? 'Transcribe with whisper.cpp'
+        : 'Transcribe (downloads the file first)';
 
     item.innerHTML = `
       <label style="display: flex; align-items: center; flex: 1; min-width: 0; cursor: pointer; gap: 14px; padding: 11px 0 11px 24px;">
         <input type="checkbox" ${initiallyChecked}>
-        <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${badge}${file.name}</span>
+        <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><span class="saved-badge">✓ Saved</span>${file.name}</span>
         <span class="file-size">${sizeText}</span>
       </label>
+      <button class="download-btn" type="button" title="Download to chosen folder">↓</button>
       <button class="retry-btn" type="button" title="Retry this file">↻</button>
+      <button class="transcribe-btn" type="button" title="${transcribeTitle}" ${canTranscribe ? '' : 'disabled'}>T</button>
       <button class="play-btn" type="button" title="Preview">▶</button>
     `;
 
@@ -104,20 +125,49 @@ export function renderFileList(metaSuffix?: string): void {
     });
 
     checkbox.addEventListener('change', () => {
-      state.files[index].selected = checkbox.checked;
+      const f = state.files[index];
+      if (!f) return;
+      f.selected = checkbox.checked;
       updateSelectionCount();
     });
 
+    // All per-row buttons guard against state.files going empty mid-render
+    // (List Files clears + repopulates). Without the guard we hit
+    // "Cannot read properties of undefined" if the user clicks a row
+    // during the reload window.
     const playBtn = item.querySelector('.play-btn') as HTMLButtonElement;
     playBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      previewFile(state.files[index]);
+      const f = state.files[index];
+      if (!f) return;
+      // If this row is the currently-loaded preview, toggle play/pause
+      // in the mini-player instead of triggering a fresh preview pull.
+      if (state.previewingFileIndex === index) {
+        togglePreviewPlayback();
+      } else {
+        previewFile(f);
+      }
     });
 
     const retryBtn = item.querySelector('.retry-btn') as HTMLButtonElement;
     retryBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      retryHandler(state.files[index]);
+      const f = state.files[index];
+      if (f) retryHandler(f);
+    });
+
+    const transcribeBtn = item.querySelector('.transcribe-btn') as HTMLButtonElement;
+    transcribeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const f = state.files[index];
+      if (f) viewOrTranscribe(f);
+    });
+
+    const downloadBtn = item.querySelector('.download-btn') as HTMLButtonElement;
+    downloadBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const f = state.files[index];
+      if (f) downloadHandler(f);
     });
 
     listDiv.appendChild(item);
@@ -234,4 +284,73 @@ export function updateRow(file: RecordingFile, status: RecordingFile['status']):
   if (sizeEl && file.size > 0) {
     sizeEl.textContent = `${(file.size / 1024).toFixed(1)} KB`;
   }
+
+  refreshTranscribeButton(row, saved);
+}
+
+function refreshTranscribeButton(row: HTMLElement, saved: boolean): void {
+  const btn = row.querySelector('.transcribe-btn') as HTMLButtonElement | null;
+  if (!btn) return;
+  const hasModel = !!getPrefs().defaultModel;
+  btn.disabled = !hasModel;
+  btn.title = !hasModel
+    ? 'Pick a default model in the Transcription panel'
+    : saved
+      ? 'Transcribe with whisper.cpp'
+      : 'Transcribe (downloads the file first)';
+}
+
+/**
+ * Re-evaluate every row's transcribe button — used after the default
+ * model changes (download completes / user switches default / model
+ * deleted). Cheaper than re-rendering the list.
+ */
+export function refreshAllTranscribeButtons(): void {
+  const rows = document.querySelectorAll<HTMLElement>('#fileList .file-item');
+  rows.forEach((row) => {
+    const idx = parseInt(row.dataset['fileIndex'] ?? '', 10);
+    const file = state.files[idx];
+    if (!file) return;
+    const saved = isSaved(getSaveFilename(file.name));
+    refreshTranscribeButton(row, saved);
+  });
+}
+
+/**
+ * Sync each row's preview indicator with `state.previewingFileIndex` and
+ * `state.previewIsPlaying`. Called from app.ts via the
+ * onPreviewStateChange subscription, so the row reflects play / pause
+ * changes regardless of whether they originated from the per-row button
+ * or the mini-player's own controls.
+ */
+export function refreshAllPlayingIndicators(): void {
+  const rows = document.querySelectorAll<HTMLElement>('#fileList .file-item');
+  rows.forEach((row) => {
+    const idx = parseInt(row.dataset['fileIndex'] ?? '', 10);
+    const isCurrent = idx === state.previewingFileIndex;
+    const isPlaying = isCurrent && state.previewIsPlaying;
+    row.classList.toggle('is-playing', isPlaying);
+    row.classList.toggle('is-current-preview', isCurrent && !isPlaying);
+    const btn = row.querySelector('.play-btn') as HTMLButtonElement | null;
+    if (btn && !btn.classList.contains('loading')) {
+      btn.textContent = isPlaying ? '⏸' : '▶';
+    }
+  });
+}
+
+/**
+ * Re-evaluate every row's saved state in-place. Called after a disk-scan
+ * refresh — toggles the row's .is-saved class (which controls badge
+ * visibility via CSS) and refreshes the transcribe button tooltip.
+ */
+export function refreshAllSavedStates(): void {
+  const rows = document.querySelectorAll<HTMLElement>('#fileList .file-item');
+  rows.forEach((row) => {
+    const idx = parseInt(row.dataset['fileIndex'] ?? '', 10);
+    const file = state.files[idx];
+    if (!file) return;
+    const saved = isSaved(getSaveFilename(file.name));
+    row.classList.toggle('is-saved', saved);
+    refreshTranscribeButton(row, saved);
+  });
 }
