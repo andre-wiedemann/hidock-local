@@ -7,6 +7,7 @@ import {
   SUBCMD_FILE_LIST,
   SUBCMD_STORAGE_INFO,
   SUBCMD_STORAGE_INIT,
+  drainInEndpoint,
   sendCommand
 } from './protocol.js';
 import {
@@ -19,11 +20,17 @@ import {
 
 /** List recordings on the device, sorted latest-first. */
 export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[]> {
-  // Param 0x0E goes in byte 7 (see protocol.ts). Matching the
-  // standalone HTML's 32 KB cap exactly — bumping to 128 KB earlier
-  // appears to have caused the device to truncate its response on
-  // some firmware variants, which is the opposite of what you'd
-  // expect. Stick to a value the standalone has been validated with.
+  // Drain leftover bytes from prior commands (storage info, etc.)
+  // before issuing FILE_LIST. Without this, the response can come back
+  // truncated — the device's data sits behind stale bytes our shorter
+  // reads couldn't consume.
+  const drained = await drainInEndpoint(device);
+  if (drained > 0) {
+    /* eslint-disable-next-line no-console */
+    console.log(`[file-list] drained ${drained} stale bytes before request`);
+  }
+
+  // Param 0x0E goes in byte 7 (see protocol.ts).
   const response = await sendCommand(
     device,
     CMD_GROUP_SYSTEM,
@@ -55,13 +62,17 @@ export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[
 /**
  * Query storage usage. Some firmware combos drop the first response after a
  * reconnect, so we retry up to 3 times, re-sending STORAGE_INIT each round
- * to flush the IN endpoint.
+ * to flush the IN endpoint. Storage info correctness also seems to gate
+ * the FILE_LIST response size, so failing here silently propagates into
+ * a smaller-than-expected file list — drain stale bytes before each
+ * attempt so the response actually lands in our read window.
  */
 export async function getStorageInfo(
   device: ClaimedDevice
 ): Promise<StorageCapacity | null> {
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt > 0) await sleep(250);
+    await drainInEndpoint(device, 200);
     await sendCommand(device, CMD_GROUP_STORAGE, SUBCMD_STORAGE_INIT, 3, 0);
     const response = await sendCommand(
       device,

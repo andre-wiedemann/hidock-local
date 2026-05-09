@@ -184,3 +184,34 @@ function raceTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
     )
   ]);
 }
+
+/**
+ * Discard any bytes still queued on the device's IN endpoint from
+ * previous commands. We've observed that small (< response-size) reads
+ * leave trailing data in the buffer; the next command's response then
+ * gets queued *behind* those stale bytes, our short read pulls only the
+ * leftovers, and the real response times out.
+ *
+ * Call this before any sendCommand sequence whose response correctness
+ * depends on a clean buffer (storage info, file list).
+ */
+export async function drainInEndpoint(
+  device: ClaimedDevice,
+  budgetMs = 500
+): Promise<number> {
+  let drained = 0;
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline) {
+    try {
+      const result = await raceTimeout(
+        device.transferIn(HIDOCK_P1_IN_ENDPOINT, 16384),
+        50
+      );
+      if (!result.data || result.data.byteLength === 0) break;
+      drained += result.data.byteLength;
+    } catch {
+      break;
+    }
+  }
+  return drained;
+}
