@@ -5,7 +5,7 @@
 // actual work (USB, persistence, DOM mutation) to its dedicated modules.
 
 import { state } from './state.js';
-import { listFiles } from './usb/commands.js';
+import { listFiles, runInitSequence } from './usb/commands.js';
 import {
   closeDevice,
   findPairedDevice,
@@ -136,8 +136,18 @@ async function connectDevice(usbDevice: USBDevice): Promise<void> {
   await openAndClaim(usbDevice);
   setConnectedUi();
   log('Device connected', 'success');
-  // Settle delay — auto-reconnect can leave stale data on the IN endpoint
-  // and racing the device's response queue causes empty file-list reads.
+  // Run the vendor's full init sequence before any user-facing
+  // commands. Without this the device sits in a "warm" state where
+  // QUERY_FILE_LIST returns a truncated response. See
+  // docs/PROTOCOL_RE_NOTES.md for the protocol details.
+  try {
+    log('Initializing device…', 'info');
+    await runInitSequence(state.device);
+    log('Device initialized', 'success');
+  } catch (err) {
+    log(`Init sequence failed: ${(err as Error).message} — listing anyway`, 'warning');
+  }
+  // Settle delay then auto-list.
   setTimeout(() => loadFileListLive(), 200);
 }
 

@@ -1,15 +1,24 @@
 import { HIDOCK_P1_IN_ENDPOINT, HIDOCK_P1_OUT_ENDPOINT, PROTOCOL_MAGIC } from '../../../shared/types.js';
 import {
+  CMD_GET_BATTERY_STATUS,
+  CMD_GET_RECORDING_QUALITY,
+  CMD_GET_SETTINGS,
   CMD_GROUP_STORAGE,
   CMD_GROUP_SYSTEM,
+  CMD_QUERY_DEVICE_INFO,
+  CMD_QUERY_DEVICE_TIME,
+  CMD_READ_CARD_INFO,
+  CMD_SET_DEVICE_TIME,
   ClaimedDevice,
   SUBCMD_DOWNLOAD_FILE,
   SUBCMD_FILE_LIST,
   SUBCMD_STORAGE_INFO,
   SUBCMD_STORAGE_INIT,
+  drainInEndpoint,
+  resetSequence,
+  sendCmd,
   sendCommand
 } from './protocol.js';
-import { drainInEndpoint } from './protocol.js';
 import {
   ParsedFileEntry,
   StorageCapacity,
@@ -17,6 +26,53 @@ import {
   stripAllProtocolHeaders,
   tryInterpretStorage
 } from './parsers.js';
+
+/**
+ * BCD-encode the host's current local time as 7 bytes:
+ *   [YY YY MM DD HH MM SS] (each byte two BCD nibbles).
+ *
+ * Matches the vendor's `to_bcd("YYYYMMDDHHMMSS")` exactly.
+ */
+function bcdEncodeNow(d: Date = new Date()): Uint8Array {
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  const s =
+    `${d.getFullYear()}` +
+    pad(d.getMonth() + 1) +
+    pad(d.getDate()) +
+    pad(d.getHours()) +
+    pad(d.getMinutes()) +
+    pad(d.getSeconds());
+  // 14 chars → 7 bytes.
+  const out = new Uint8Array(s.length / 2);
+  for (let i = 0; i < s.length; i += 2) {
+    out[i / 2] = ((s.charCodeAt(i) - 48) << 4) | (s.charCodeAt(i + 1) - 48);
+  }
+  return out;
+}
+
+/**
+ * Run the vendor's full device-init sequence (captured from HiNotes
+ * runtime). The HiDock falls into a truncated "warm" state for
+ * QUERY_FILE_LIST when not properly initialized, returning fewer
+ * entries than it actually has on disk. This sequence puts it in the
+ * state where the file list is complete.
+ *
+ * Each call resets the sequence counter, so every fresh connect starts
+ * from sqidx=1 just like the vendor app.
+ */
+export async function runInitSequence(device: ClaimedDevice): Promise<void> {
+  resetSequence();
+  // We don't await responses here for speed — the device queues
+  // them and we read them in the next sendCmd's transferIn. Errors
+  // bubble up to the caller (app.ts logs + continues).
+  await sendCmd(device, CMD_QUERY_DEVICE_INFO);
+  await sendCmd(device, CMD_QUERY_DEVICE_TIME);
+  await sendCmd(device, CMD_SET_DEVICE_TIME, bcdEncodeNow());
+  await sendCmd(device, CMD_GET_SETTINGS);
+  await sendCmd(device, CMD_GET_RECORDING_QUALITY);
+  await sendCmd(device, CMD_READ_CARD_INFO);
+  await sendCmd(device, CMD_GET_BATTERY_STATUS);
+}
 
 /** List recordings on the device, sorted latest-first. */
 export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[]> {
