@@ -5,6 +5,8 @@ import { state, RecordingFile } from '../state.js';
 import { dayKey, dayLabel, applyExtensionPreference } from '../util/filename.js';
 import { formatBytes } from '../util/format.js';
 import { previewFile } from './preview.js';
+import { getPrefs } from '../whisper/store.js';
+import { transcribeFile } from '../whisper/transcribe-flow.js';
 
 type RetryHandler = (file: RecordingFile) => void | Promise<void>;
 
@@ -61,6 +63,13 @@ export function renderFileList(metaSuffix?: string): void {
     const sizeText = file.size > 0 ? formatBytes(file.size) : '—';
     const initiallyChecked = saved && isSkipSavedActive() ? '' : 'checked';
 
+    const canTranscribe = saved && !!getPrefs().defaultModel;
+    const transcribeTitle = !saved
+      ? 'Download the file first'
+      : !getPrefs().defaultModel
+        ? 'Pick a default model in the Transcription panel'
+        : 'Transcribe with whisper.cpp';
+
     item.innerHTML = `
       <label style="display: flex; align-items: center; flex: 1; min-width: 0; cursor: pointer; gap: 14px; padding: 11px 0 11px 24px;">
         <input type="checkbox" ${initiallyChecked}>
@@ -68,6 +77,7 @@ export function renderFileList(metaSuffix?: string): void {
         <span class="file-size">${sizeText}</span>
       </label>
       <button class="retry-btn" type="button" title="Retry this file">↻</button>
+      <button class="transcribe-btn" type="button" title="${transcribeTitle}" ${canTranscribe ? '' : 'disabled'}>T</button>
       <button class="play-btn" type="button" title="Preview">▶</button>
     `;
 
@@ -118,6 +128,14 @@ export function renderFileList(metaSuffix?: string): void {
     retryBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       retryHandler(state.files[index]);
+    });
+
+    const transcribeBtn = item.querySelector('.transcribe-btn') as HTMLButtonElement;
+    transcribeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      transcribeFile(state.files[index]).catch(() => {
+        // transcribeFile already logs its own errors.
+      });
     });
 
     listDiv.appendChild(item);
@@ -234,4 +252,35 @@ export function updateRow(file: RecordingFile, status: RecordingFile['status']):
   if (sizeEl && file.size > 0) {
     sizeEl.textContent = `${(file.size / 1024).toFixed(1)} KB`;
   }
+
+  refreshTranscribeButton(row, saved);
+}
+
+function refreshTranscribeButton(row: HTMLElement, saved: boolean): void {
+  const btn = row.querySelector('.transcribe-btn') as HTMLButtonElement | null;
+  if (!btn) return;
+  const hasModel = !!getPrefs().defaultModel;
+  const canTranscribe = saved && hasModel;
+  btn.disabled = !canTranscribe;
+  btn.title = !saved
+    ? 'Download the file first'
+    : !hasModel
+      ? 'Pick a default model in the Transcription panel'
+      : 'Transcribe with whisper.cpp';
+}
+
+/**
+ * Re-evaluate every row's transcribe button — used after the default
+ * model changes (download completes / user switches default / model
+ * deleted). Cheaper than re-rendering the list.
+ */
+export function refreshAllTranscribeButtons(): void {
+  const rows = document.querySelectorAll<HTMLElement>('#fileList .file-item');
+  rows.forEach((row) => {
+    const idx = parseInt(row.dataset['fileIndex'] ?? '', 10);
+    const file = state.files[idx];
+    if (!file) return;
+    const saved = isSaved(getSaveFilename(file.name));
+    refreshTranscribeButton(row, saved);
+  });
 }

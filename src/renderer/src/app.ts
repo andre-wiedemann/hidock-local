@@ -29,6 +29,7 @@ import {
 import {
   applyFilter,
   applySkipSavedToggle,
+  refreshAllTranscribeButtons,
   renderFileList,
   setRetryHandler,
   setVisibleSelected
@@ -46,6 +47,7 @@ import {
   downloadSingle
 } from './downloader.js';
 import { initWhisperPanel } from './whisper/settings-panel.js';
+import { subscribe as subscribeWhisper } from './whisper/store.js';
 import { HIDOCK_P1_PRODUCT_ID, HIDOCK_P1_VENDOR_ID } from '../../shared/types.js';
 
 async function loadFileListLive(silent = false): Promise<void> {
@@ -292,6 +294,11 @@ export async function init(): Promise<void> {
   initWhisperPanel().catch((err) => {
     console.error('Whisper panel init failed:', err);
   });
+
+  // When the default model changes (download finishes, user switches
+  // default, model is deleted), refresh every visible T button so users
+  // don't have to re-list files to see them enable.
+  subscribeWhisper(() => refreshAllTranscribeButtons());
 
   // Auto-reconnect runs last so the UI is fully wired by the time the device
   // call returns.

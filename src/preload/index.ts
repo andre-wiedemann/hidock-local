@@ -3,7 +3,7 @@
 // privileged operations that need the main process (whisper transcription,
 // platform metadata).
 
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
   ModelDownloadProgress,
   ModelInfo,
@@ -54,6 +54,15 @@ const whisperApi = {
 const api = {
   platform: process.platform,
   version: process.env['npm_package_version'] ?? '0.0.0',
+  /**
+   * Resolve an absolute filesystem path for a File obtained from the
+   * renderer (e.g. via `dirHandle.getFileHandle(name).then(h => h.getFile())`).
+   * Required to hand the file to the main-process whisper pipeline since
+   * IPC can't carry FileSystemFileHandle objects.
+   */
+  getPathForFile(file: File): string {
+    return webUtils.getPathForFile(file);
+  },
   whisper: whisperApi
 };
 

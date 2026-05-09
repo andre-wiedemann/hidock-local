@@ -25,6 +25,7 @@ import {
   clearSavedFilesPanel,
   presentSaveableBlob
 } from './ui/saved-files-panel.js';
+import { maybeAutoTranscribe } from './whisper/transcribe-flow.js';
 
 function getMp3Pref(): boolean {
   return (document.getElementById('useMp3Ext') as HTMLInputElement | null)?.checked ?? true;
@@ -111,6 +112,7 @@ export async function downloadSingle(file: RecordingFile): Promise<void> {
     updateRow(file, 'success');
     log(`✓ ${file.name} (${(data.length / 1024).toFixed(1)} KB)`, 'success');
     updateProgress(1, 1, 'Complete!');
+    maybeAutoTranscribe(file);
   } catch (err) {
     file.status = 'error';
     updateRow(file, 'error');
@@ -157,6 +159,7 @@ export async function downloadStreamToFolder(filesToDownload: RecordingFile[]): 
       updateRow(file, 'success');
       success++;
       log(`✓ ${file.name} (${(data.length / 1024).toFixed(1)} KB)`, 'success');
+      maybeAutoTranscribe(file);
     } catch (err) {
       errors++;
       file.status = 'error';

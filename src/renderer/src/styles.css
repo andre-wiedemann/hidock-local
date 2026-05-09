@@ -748,6 +748,34 @@ input[type="checkbox"]:focus-visible {
   color: #1a0000;
 }
 
+/* ─── Per-row transcribe button ──────────────── */
+.file-item .transcribe-btn {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--text-muted);
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  margin: 0 6px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.file-item .transcribe-btn:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.file-item .transcribe-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
 /* ─── Per-row play button ────────────────────── */
 .file-item .play-btn {
   background: transparent;

@@ -1,4 +1,30 @@
 import { formatBytes, formatDuration } from '../util/format.js';
+import type { TranscribePhase } from '../../../shared/whisper.js';
+
+const PHASE_LABEL: Record<TranscribePhase, string> = {
+  preparing: 'Preparing',
+  decoding: 'Decoding audio',
+  transcribing: 'Transcribing',
+  finalizing: 'Finalizing'
+};
+
+/**
+ * Switch the transfer panel into "transcribe" mode: progress bar reflects
+ * whisper progress, the Speed / ETA cells are repurposed.
+ */
+export function setTranscribeProgress(phase: TranscribePhase, percent: number): void {
+  const pct = Math.max(0, Math.min(100, Math.round(percent)));
+  setStyle('progressFill', 'width', `${pct}%`);
+  setText('progressFill', `${pct}%`);
+  setText('progressPercent', `${pct}%`);
+  setText('transferSpeed', PHASE_LABEL[phase]);
+  setText('transferEta', '—');
+}
+
+export function setTranscribeIdle(): void {
+  setText('transferSpeed', '—');
+  setText('transferEta', '—');
+}
 
 export function updateProgress(current: number, total: number, currentFileLabel: string | null = null): void {
   const pct = total > 0 ? Math.round((current / total) * 100) : 0;

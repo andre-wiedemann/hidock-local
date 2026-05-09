@@ -9,6 +9,8 @@ import type { WhisperApi } from '../../../shared/whisper.js';
 interface HidockGlobal {
   platform: string;
   version: string;
+  /** Resolve a File (from FileSystemFileHandle) to an absolute disk path. */
+  getPathForFile(file: File): string;
   whisper: WhisperApi;
 }
 
