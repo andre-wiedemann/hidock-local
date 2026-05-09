@@ -53,7 +53,8 @@ import {
 } from './downloader.js';
 import { initWhisperPanel } from './whisper/settings-panel.js';
 import { subscribe as subscribeWhisper } from './whisper/store.js';
-import { setDownloadFn } from './whisper/transcribe-flow.js';
+import { setDownloadFn, transcribeFile } from './whisper/transcribe-flow.js';
+import { getCurrentTranscriptFile } from './whisper/transcript-panel.js';
 import { HIDOCK_P1_PRODUCT_ID, HIDOCK_P1_VENDOR_ID } from '../../shared/types.js';
 
 async function loadFileListLive(silent = false): Promise<void> {
@@ -307,6 +308,14 @@ export async function init(): Promise<void> {
     headerId: 'transcriptPanelHeader',
     storageKey: 'hidock:transcript:panelCollapsed',
     defaultCollapsed: false
+  });
+  // Re-transcribe button — re-enqueues whatever recording is currently
+  // displayed in the transcript panel. Useful after switching to a
+  // better model or hitting an empty/garbled result.
+  document.getElementById('reTranscribeBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const file = getCurrentTranscriptFile();
+    if (file) transcribeFile(file);
   });
 
   // Cached list shows immediately, even pre-connect.

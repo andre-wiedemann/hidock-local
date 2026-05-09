@@ -959,6 +959,11 @@ input[type="checkbox"]:focus-visible {
   font-weight: 600;
   align-self: center;
 }
+.transcript-meta button {
+  margin-left: auto;
+  padding: 6px 12px;
+  font-size: 9.5px;
+}
 .transcript-text {
   font-family: 'Instrument Sans', system-ui, sans-serif;
   font-size: 14px;

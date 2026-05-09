@@ -26,7 +26,11 @@ import {
 import { TranscribeFormat, TranscribeResult } from '../../../shared/whisper.js';
 import { whisperApi } from './api.js';
 import { getPrefs } from './store.js';
-import { setTranscriptResult, setTranscriptStatus } from './transcript-panel.js';
+import {
+  setTranscriptResult,
+  setTranscriptStatus,
+  showExistingTranscript
+} from './transcript-panel.js';
 
 let activeRequestId: string | null = null;
 let progressUnsub: (() => void) | null = null;
@@ -75,6 +79,23 @@ async function resolveAudioPath(file: RecordingFile): Promise<string | null> {
 
 function basePathFor(audioPath: string): string {
   return audioPath.replace(/\.(mp3|hda|wav|m4a|flac|ogg)$/i, '');
+}
+
+/**
+ * Returns the absolute path of an existing transcript output for `file`,
+ * if one is on disk next to the audio. Probes .txt → .vtt → .json in
+ * that order, returning the first hit.
+ */
+async function findExistingTranscript(file: RecordingFile): Promise<string | null> {
+  if (!state.dirPath) return null;
+  const saveName = applyExtensionPreference(file.name, getMp3Pref());
+  const audioPath = joinPath(state.dirPath, saveName);
+  const basePath = basePathFor(audioPath);
+  for (const ext of ['.txt', '.vtt', '.json'] as const) {
+    const path = `${basePath}${ext}`;
+    if (await window.hidock.fs.pathExists(path)) return path;
+  }
+  return null;
 }
 
 function ensureProgressSubscription(requestId: string): void {
@@ -149,6 +170,22 @@ export function transcribeFile(file: RecordingFile, opts: TranscribeOptions = {}
     setTranscriptStatus(describeQueue());
   }
   runWorker();
+}
+
+/**
+ * Click-T behavior: if a transcript already exists for this recording,
+ * surface it in the panel and stop. Otherwise enqueue a fresh transcribe
+ * request. The panel's Re-transcribe button is the explicit way to
+ * rerun (after a model switch or a bad result).
+ */
+export async function viewOrTranscribe(file: RecordingFile): Promise<void> {
+  const existing = await findExistingTranscript(file);
+  if (existing) {
+    log(`Showing existing transcript for ${file.name}`, 'info');
+    await showExistingTranscript(file, existing);
+    return;
+  }
+  transcribeFile(file);
 }
 
 /**

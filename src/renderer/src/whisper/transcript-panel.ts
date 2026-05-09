@@ -1,6 +1,12 @@
-// In-app viewer for the most recent transcription. Lives in its own
-// collapsible panel after Saved Files. The panel is hidden until the
-// first successful transcribe; subsequent transcribes replace its body.
+// In-app viewer for transcriptions. Two modes:
+//   - "fresh"     — populated by setTranscriptResult after a transcribe
+//                   completes. Shows lang + duration metadata.
+//   - "existing"  — populated by showExistingTranscript when the user
+//                   clicks T on a row that already has a transcript on
+//                   disk. Shows ".txt · loaded from disk".
+// Either way, a "Re-transcribe" button stays visible whenever a file is
+// loaded, so the user can rerun (after switching models, or to retry a
+// bad result).
 
 import type { TranscribeResult } from '../../../shared/whisper.js';
 import type { RecordingFile } from '../state.js';
@@ -11,6 +17,7 @@ interface PanelState {
   filenameEl: HTMLElement;
   detailEl: HTMLElement;
   textEl: HTMLElement;
+  reBtn: HTMLButtonElement;
 }
 
 function getEls(): PanelState | null {
@@ -19,8 +26,16 @@ function getEls(): PanelState | null {
   const filenameEl = document.getElementById('transcriptFilename');
   const detailEl = document.getElementById('transcriptDetail');
   const textEl = document.getElementById('transcriptText');
-  if (!panel || !meta || !filenameEl || !detailEl || !textEl) return null;
-  return { panel, meta, filenameEl, detailEl, textEl };
+  const reBtn = document.getElementById('reTranscribeBtn') as HTMLButtonElement | null;
+  if (!panel || !meta || !filenameEl || !detailEl || !textEl || !reBtn) return null;
+  return { panel, meta, filenameEl, detailEl, textEl, reBtn };
+}
+
+let currentFile: RecordingFile | null = null;
+
+/** Returns the recording currently shown in the panel, or null. */
+export function getCurrentTranscriptFile(): RecordingFile | null {
+  return currentFile;
 }
 
 export function showTranscriptPanel(): void {
@@ -55,9 +70,11 @@ export async function setTranscriptResult(
   const sourcePath =
     result.outputs.txt ?? result.outputs.vtt ?? result.outputs.json ?? null;
 
+  currentFile = file;
   els.filenameEl.textContent = file.name;
   els.detailEl.textContent = formatDetail(result, formatExt);
   els.textEl.textContent = '(loading…)';
+  els.reBtn.style.display = 'inline-block';
   showTranscriptPanel();
 
   if (!sourcePath) {
@@ -73,6 +90,35 @@ export async function setTranscriptResult(
     els.textEl.scrollTop = 0;
   } catch (err) {
     els.textEl.textContent = `Failed to read ${sourcePath}: ${(err as Error).message}`;
+  }
+}
+
+/**
+ * Show a transcript that's already on disk (no transcribe ran).
+ * Triggered by the per-row T button when a `<basename>.txt` (or .vtt /
+ * .json fallback) is found next to the audio file.
+ */
+export async function showExistingTranscript(
+  file: RecordingFile,
+  path: string
+): Promise<void> {
+  const els = getEls();
+  if (!els) return;
+  const ext = path.match(/\.(\w+)$/)?.[1] ?? '';
+  currentFile = file;
+  els.filenameEl.textContent = file.name;
+  els.detailEl.textContent = `loaded from disk · .${ext}`;
+  els.textEl.textContent = '(loading…)';
+  els.reBtn.style.display = 'inline-block';
+  showTranscriptPanel();
+  try {
+    const text = await window.hidock.fs.readTextFile(path);
+    els.textEl.textContent = text.trim().length === 0
+      ? '(empty file — re-transcribe to try again)'
+      : text;
+    els.textEl.scrollTop = 0;
+  } catch (err) {
+    els.textEl.textContent = `Failed to read ${path}: ${(err as Error).message}`;
   }
 }
 

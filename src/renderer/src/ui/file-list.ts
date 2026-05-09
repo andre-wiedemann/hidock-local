@@ -6,7 +6,7 @@ import { dayKey, dayLabel, applyExtensionPreference } from '../util/filename.js'
 import { formatBytes } from '../util/format.js';
 import { previewFile } from './preview.js';
 import { getPrefs } from '../whisper/store.js';
-import { transcribeFile } from '../whisper/transcribe-flow.js';
+import { viewOrTranscribe } from '../whisper/transcribe-flow.js';
 
 type FileHandler = (file: RecordingFile) => void | Promise<void>;
 
@@ -144,9 +144,10 @@ export function renderFileList(metaSuffix?: string): void {
     const transcribeBtn = item.querySelector('.transcribe-btn') as HTMLButtonElement;
     transcribeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // transcribeFile enqueues + returns immediately; the worker drains
-      // the queue and the transcript panel surfaces results.
-      transcribeFile(state.files[index]);
+      // viewOrTranscribe surfaces an existing transcript if one is on
+      // disk; otherwise it enqueues a fresh run. The Re-transcribe
+      // button in the transcript panel is the explicit "rerun" path.
+      viewOrTranscribe(state.files[index]);
     });
 
     const downloadBtn = item.querySelector('.download-btn') as HTMLButtonElement;
