@@ -1,0 +1,53 @@
+{
+  "name": "hidock-local",
+  "version": "0.1.0",
+  "description": "Vendor-free, cloud-free desktop tool for the HiDock P1 voice recorder. Pulls recordings off the device over USB without going through the manufacturer's cloud.",
+  "main": "out/main/index.js",
+  "author": "André Wiedemann",
+  "license": "MIT",
+  "homepage": "https://github.com/andre-wiedemann/hidock-local",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andre-wiedemann/hidock-local.git"
+  },
+  "bugs": {
+    "url": "https://github.com/andre-wiedemann/hidock-local/issues"
+  },
+  "keywords": [
+    "hidock",
+    "p1",
+    "voice-recorder",
+    "webusb",
+    "electron",
+    "offline",
+    "local-first"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "package": "electron-vite build && electron-builder --dir",
+    "package:mac": "electron-vite build && electron-builder --mac",
+    "package:win": "electron-vite build && electron-builder --win",
+    "package:linux": "electron-vite build && electron-builder --linux",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/w3c-web-usb": "^1.0.10",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.5",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0",
+    "vitest": "^2.1.0"
+  }
+}

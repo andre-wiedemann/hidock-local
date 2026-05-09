@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>HiDock Local</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="app">
+      <header class="masthead">
+        <p class="eyebrow">Local · Vendor-Free · WebUSB</p>
+        <h1>HiDock<span class="slash">/</span><span class="model">P1</span></h1>
+        <p class="lede">
+          Direct-attach desktop console for the HiDock P1 voice recorder. List, select, and pull
+          recordings off the device — <em>no cloud, no vendor login, nothing leaves your machine</em>.
+        </p>
+        <div class="masthead-rule"></div>
+      </header>
+
+      <section class="panel">
+        <div class="panel-header">
+          Device <span class="meta">VID 10D6 · PID B00E</span>
+        </div>
+        <div class="panel-body">
+          <div id="connectionStatus" class="status">Not connected</div>
+          <div class="storage-info" id="storageInfo" style="display: none">
+            <span class="label">Storage</span>
+            <span class="bar"><span class="bar-fill" id="storageBarFill"></span></span>
+            <span class="text" id="storageInfoText">— / —</span>
+          </div>
+          <div class="btn-row">
+            <button id="connectBtn" class="primary">Connect</button>
+            <button id="disconnectBtn" disabled>Disconnect</button>
+          </div>
+        </div>
+      </section>
+
+      <div id="downloadSection" style="display: none">
+        <section class="panel">
+          <div class="panel-header">Config</div>
+          <div class="panel-body">
+            <div class="save-target" id="saveTarget">
+              <span class="label">Save Target</span>
+              <span class="path" id="saveTargetPath"
+                >Browser downloads · click Choose Folder to stream files directly to disk</span
+              >
+              <button id="chooseFolderBtn" type="button">Choose Folder…</button>
+              <button id="clearFolderBtn" type="button" style="display: none">Clear</button>
+            </div>
+
+            <div class="config-grid">
+              <label class="field toggle">
+                <span class="field-label">Save as .mp3</span>
+                <input type="checkbox" id="useMp3Ext" checked />
+              </label>
+              <div class="field" id="zipFieldMaxSize">
+                <span class="field-label">Max ZIP · MB</span>
+                <input type="number" id="maxZipSize" value="100" min="10" max="500" />
+              </div>
+              <div class="field" id="zipFieldPerZip">
+                <span class="field-label">Files / ZIP</span>
+                <input type="number" id="filesPerZip" value="20" min="1" max="50" />
+              </div>
+              <label class="field toggle" id="zipFieldAutoSave">
+                <span class="field-label">Auto-save</span>
+                <input type="checkbox" id="autoSave" checked />
+              </label>
+            </div>
+
+            <div class="btn-row">
+              <button id="listFilesBtn">List Files</button>
+              <button id="downloadAllBtn" class="primary">Download All</button>
+              <button id="downloadSelectedBtn">Download Selected</button>
+              <button id="stopBtn" class="danger" style="display: none">Stop</button>
+            </div>
+
+            <div class="info-banner" id="zipInfo" style="display: none">
+              Without a save folder, multi-file pulls bundle into ZIPs. For best results, click
+              Choose Folder to stream each file straight to disk.
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" id="progressContainer" style="display: none">
+          <div class="panel-header">Transfer</div>
+          <div class="panel-body">
+            <span class="progress-percent" id="progressPercent">0%</span>
+            <div class="progress-bar">
+              <div class="progress-fill" id="progressFill" style="width: 0%">0%</div>
+            </div>
+            <div class="stat-cell" style="margin-bottom: 18px">
+              <span class="value thin" id="currentFile">Ready</span>
+            </div>
+            <div class="progress-stats">
+              <div class="stat-cell">
+                <span class="label">Files</span>
+                <span class="value"
+                  ><span id="downloadedFiles">0</span> / <span id="totalFiles">0</span></span
+                >
+              </div>
+              <div class="stat-cell">
+                <span class="label">Speed</span>
+                <span class="value" id="transferSpeed">—</span>
+              </div>
+              <div class="stat-cell">
+                <span class="label">ETA</span>
+                <span class="value" id="transferEta">—</span>
+              </div>
+              <div class="stat-cell" id="zipsStatCell" style="display: none">
+                <span class="label">ZIPs</span>
+                <span class="value" id="zipsCreated">0</span>
+              </div>
+              <div class="stat-cell" id="zipSizeStatCell" style="display: none">
+                <span class="label">Current ZIP</span>
+                <span class="value" id="currentZipSize">0 MB</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" id="zipList" style="display: none">
+          <div class="panel-header">Saved Files</div>
+          <div id="zipItems"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            Files <span class="meta" id="filesPanelMeta"></span>
+          </div>
+          <div id="fileSelectionControls" class="file-controls" style="display: none">
+            <input type="text" id="searchInput" class="search-input" placeholder="Filter…" autocomplete="off" />
+            <button id="selectAllBtn" type="button">Select Visible</button>
+            <button id="deselectAllBtn" type="button">Deselect Visible</button>
+            <label class="toggle-inline" title="Auto-deselect rows you have already saved">
+              <input type="checkbox" id="skipSavedToggle" />
+              <span>Skip Saved</span>
+            </label>
+            <span class="count" id="selectionCount"></span>
+          </div>
+          <div class="file-list" id="fileList" style="display: none"></div>
+        </section>
+      </div>
+
+      <section class="panel">
+        <div class="panel-header">Debug Log</div>
+        <div class="log-toggle-row">
+          <button id="toggleLogBtn">Show / Hide</button>
+          <button id="clearLogBtn">Clear</button>
+        </div>
+        <div id="log"></div>
+      </section>
+
+      <footer class="colophon">
+        <span>HiDock Local · Open Source · MIT</span>
+        <div class="right">
+          <span>WebUSB</span>
+          <span>Chromium / Electron</span>
+        </div>
+      </footer>
+    </div>
+
+    <div class="mini-player" id="miniPlayer">
+      <span class="label">Preview</span>
+      <span class="title" id="miniPlayerTitle">—</span>
+      <audio id="miniPlayerAudio" controls></audio>
+      <button class="close-btn" id="miniPlayerClose">Close</button>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
