@@ -7,9 +7,9 @@ import {
   SUBCMD_FILE_LIST,
   SUBCMD_STORAGE_INFO,
   SUBCMD_STORAGE_INIT,
-  drainInEndpoint,
   sendCommand
 } from './protocol.js';
+import { drainInEndpoint } from './protocol.js';
 import {
   ParsedFileEntry,
   StorageCapacity,
@@ -20,17 +20,12 @@ import {
 
 /** List recordings on the device, sorted latest-first. */
 export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[]> {
-  // Drain leftover bytes from prior commands (storage info, etc.)
-  // before issuing FILE_LIST. Without this, the response can come back
-  // truncated — the device's data sits behind stale bytes our shorter
-  // reads couldn't consume.
-  const drained = await drainInEndpoint(device);
-  if (drained > 0) {
-    /* eslint-disable-next-line no-console */
-    console.log(`[file-list] drained ${drained} stale bytes before request`);
-  }
-
-  // Param 0x0E goes in byte 7 (see protocol.ts).
+  // Param 0x0E goes in byte 7 (see protocol.ts). We don't drain the IN
+  // endpoint here despite the storage-info-fails-→-truncated-list
+  // correlation; an experimental drain right before this transferOut
+  // produced an empty response (the drain itself seems to disturb
+  // some firmware state). The drain inside getStorageInfo's retry
+  // loop is enough.
   const response = await sendCommand(
     device,
     CMD_GROUP_SYSTEM,
