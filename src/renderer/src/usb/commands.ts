@@ -90,18 +90,25 @@ export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[
   if (!response || response.length <= 12) return [];
   /* eslint-disable no-console */
   console.log(`[file-list] received ${response.length} bytes from device`);
-  // Hunt for filename-shaped substrings the parser might miss + count
-  // recordings per day so we can compare with the standalone HTML's
-  // panel directly when entries go missing.
-  const text = new TextDecoder('latin1').decode(response.slice(12));
-  const allMatches = text.match(/\d{4}[A-Za-z]{3}\d{2}/g) ?? [];
-  const dayCounts: Record<string, number> = {};
-  for (const m of allMatches) dayCounts[m] = (dayCounts[m] ?? 0) + 1;
+  // Count record delimiters (05 00 00 1b) — that's the real record
+  // count straight from the wire format, independent of our regex.
+  const payload = response.slice(12);
+  let delimCount = 0;
+  for (let i = 0; i + 4 <= payload.length; i++) {
+    if (
+      payload[i] === 0x05 && payload[i + 1] === 0x00 &&
+      payload[i + 2] === 0x00 && payload[i + 3] === 0x1b
+    ) {
+      delimCount++;
+      i += 3;
+    }
+  }
+  const text = new TextDecoder('latin1').decode(payload);
+  const dayMatches = text.match(/\d{4}[A-Za-z]{3}\d{2}/g) ?? [];
   console.log(
-    `[file-list] raw "YYYYMonDD" substrings in response: ${allMatches.length} ` +
-    `(${Object.keys(dayCounts).length} unique days)`
+    `[file-list] record delimiters: ${delimCount} | ` +
+    `YYYYMonDD substrings: ${dayMatches.length}`
   );
-  console.log('[file-list] day counts:', dayCounts);
   /* eslint-enable no-console */
   return parseFileListResponse(response);
 }
