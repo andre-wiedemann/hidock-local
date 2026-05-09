@@ -195,6 +195,46 @@ export function stripChunkHeader(chunk: Uint8Array): Uint8Array {
 }
 
 /**
+ * Strip 12-byte chunk headers from an assembled FILE_LIST response.
+ * The device fragments the file list across multiple "chunks", each
+ * prefixed with `12 34 00 04 <seq:4> <bodyLen:4>`. The first such
+ * header is the outer response (caller already slices that off with
+ * `.slice(12)`); the rest get spliced INTO the data — including
+ * mid-filename for the unlucky record straddling a chunk boundary.
+ *
+ * Unlike the download-chunk version this one matches by cmd code
+ * only (0x12 0x34 0x00 0x04) — body length and sequence vary per
+ * chunk and we don't know them up-front. False-positive risk on
+ * random bytes is ~1/2³² per offset; negligible against 12 KB.
+ */
+export function stripFileListChunkHeaders(payload: Uint8Array): Uint8Array {
+  const out = new Uint8Array(payload.length);
+  let outIdx = 0;
+  let lastEnd = 0;
+  let i = 0;
+  while (i <= payload.length - 12) {
+    if (
+      payload[i] === 0x12 && payload[i + 1] === 0x34 &&
+      payload[i + 2] === 0x00 && payload[i + 3] === 0x04
+    ) {
+      if (i > lastEnd) {
+        out.set(payload.subarray(lastEnd, i), outIdx);
+        outIdx += i - lastEnd;
+      }
+      i += 12;
+      lastEnd = i;
+    } else {
+      i++;
+    }
+  }
+  if (lastEnd < payload.length) {
+    out.set(payload.subarray(lastEnd), outIdx);
+    outIdx += payload.length - lastEnd;
+  }
+  return out.slice(0, outIdx);
+}
+
+/**
  * Strip every 12-byte protocol header found in an assembled download
  * stream. Matches the full 12-byte signature
  * `12 34 00 05 00 00 00 59 00 00 1f f4` (cmd id + magic length 0x1ff4),

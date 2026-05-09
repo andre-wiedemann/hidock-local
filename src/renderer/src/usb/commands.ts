@@ -19,6 +19,7 @@ import {
   StorageCapacity,
   parseFileListResponse,
   stripAllProtocolHeaders,
+  stripFileListChunkHeaders,
   tryInterpretStorage
 } from './parsers.js';
 
@@ -88,9 +89,22 @@ export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[
     { multiChunk: true, readSize: 32768 }
   );
   if (!response || response.length <= 12) return [];
+
+  // Device fragments the file list across multiple ~4KB chunks, each
+  // prefixed with a 12-byte `12 34 00 04 ...` header. The first one is
+  // the outer response (we slice it off below); the rest get spliced
+  // into the data — including mid-filename for unlucky records that
+  // straddle a chunk boundary. Strip all of them before parsing.
+  const cleanPayload = stripFileListChunkHeaders(response.slice(12));
+  // Re-prepend a 12-byte stub so parseFileListResponse's `.slice(12)`
+  // works the same way as before.
+  const cleaned = new Uint8Array(12 + cleanPayload.length);
+  cleaned.set(cleanPayload, 12);
+
   /* eslint-disable no-console */
   console.log(`[file-list] received ${response.length} bytes from device`);
-  const payload = response.slice(12);
+  console.log(`[file-list] after chunk-header strip: ${cleaned.length} bytes`);
+  const payload = cleanPayload;
   const FULL_RE = /(REC_\d{8}_\d{6}\.hda|\d{4}[A-Za-z]{3}\d{2}-\d{6}-Rec\d+\.hda)/i;
   const records: { idx: number; ascii: string; hex: string; matchesRegex: boolean }[] = [];
   for (let i = 0; i + 4 <= payload.length; i++) {
@@ -118,7 +132,7 @@ export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[
     console.log(`  #${r.idx} hex:   ${r.hex}`);
   }
   /* eslint-enable no-console */
-  return parseFileListResponse(response);
+  return parseFileListResponse(cleaned);
 }
 
 /**

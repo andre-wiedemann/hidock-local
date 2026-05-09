@@ -67,16 +67,11 @@ async function loadFileListLive(silent = false): Promise<void> {
     if (!silent) log('Getting file list…', 'info');
     state.files = [];
 
-    // Re-run init before every list refresh. The HiDock drops back into
-    // a truncated-list state after each session of activity, and only
-    // the full 7-command init sequence reliably puts it back into the
-    // complete-list state. Re-running on every List Files click is
-    // cheap (~10ms total) and keeps the count consistent.
-    try {
-      await runInitSequence(state.device);
-    } catch (err) {
-      log(`Re-init failed: ${(err as Error).message} — listing anyway`, 'warning');
-    }
+    // Init only runs on connect. Re-running it on subsequent List
+    // Files calls produces all-timeouts (the device only accepts the
+    // init handshake while in a fresh post-claim state). We rely on
+    // chunk-header stripping in listFiles to handle the truncation
+    // that the "warm" state would otherwise cause.
 
     await refreshSavedFromDisk();
     await refreshStoragePanel();
