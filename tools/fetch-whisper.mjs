@@ -122,7 +122,14 @@ function main() {
     '-DBUILD_SHARED_LIBS=OFF',
     '-DWHISPER_BUILD_TESTS=OFF',
     '-DWHISPER_BUILD_SERVER=OFF',
-    '-DWHISPER_BUILD_EXAMPLES=ON'
+    '-DWHISPER_BUILD_EXAMPLES=ON',
+    // GGML's auto-detection enables i8mm-using kernels (vmmlaq_s32) on
+    // Apple silicon hosts but does not propagate the matching `-march`
+    // flag to the per-source compile commands, so the build dies with
+    // "requires target feature 'i8mm'". Disabling NATIVE makes GGML use
+    // a baseline ARM target without i8mm. Slight perf hit on M-series,
+    // but the alternative is no macOS build at all.
+    '-DGGML_NATIVE=OFF'
   ];
   run(`cmake ${cmakeArgs.join(' ')}`, { cwd: buildRoot });
   run(`cmake --build build --config Release -j`, { cwd: buildRoot });
