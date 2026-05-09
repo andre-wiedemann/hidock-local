@@ -57,16 +57,22 @@ function bcdEncodeNow(d: Date = new Date()): Uint8Array {
  */
 export async function runInitSequence(device: ClaimedDevice): Promise<void> {
   resetSequence();
-  // We don't await responses here for speed — the device queues
-  // them and we read them in the next sendCmd's transferIn. Errors
-  // bubble up to the caller (app.ts logs + continues).
-  await sendCmd(device, CMD_QUERY_DEVICE_INFO);
-  await sendCmd(device, CMD_QUERY_DEVICE_TIME);
-  await sendCmd(device, CMD_SET_DEVICE_TIME, bcdEncodeNow());
-  await sendCmd(device, CMD_GET_SETTINGS);
-  await sendCmd(device, CMD_GET_RECORDING_QUALITY);
-  await sendCmd(device, CMD_READ_CARD_INFO);
-  await sendCmd(device, CMD_GET_BATTERY_STATUS);
+  /* eslint-disable no-console */
+  const log = async (label: string, cmd: number, body?: Uint8Array): Promise<void> => {
+    const t0 = performance.now();
+    const r = await sendCmd(device, cmd, body ?? null, { readSize: 4096, timeoutMs: 2000 });
+    const dt = (performance.now() - t0).toFixed(0);
+    const head = r ? Array.from(r.slice(0, 16)).map((b) => b.toString(16).padStart(2, '0')).join(' ') : '(null)';
+    console.log(`[init] ${label}  cmd=0x${cmd.toString(16).padStart(4, '0')}  ← ${r?.length ?? 0}B  ${dt}ms  ${head}${r && r.length > 16 ? '…' : ''}`);
+  };
+  await log('QUERY_DEVICE_INFO    ', CMD_QUERY_DEVICE_INFO);
+  await log('QUERY_DEVICE_TIME    ', CMD_QUERY_DEVICE_TIME);
+  await log('SET_DEVICE_TIME      ', CMD_SET_DEVICE_TIME, bcdEncodeNow());
+  await log('GET_SETTINGS         ', CMD_GET_SETTINGS);
+  await log('GET_RECORDING_QUALITY', CMD_GET_RECORDING_QUALITY);
+  await log('READ_CARD_INFO       ', CMD_READ_CARD_INFO);
+  await log('GET_BATTERY_STATUS   ', CMD_GET_BATTERY_STATUS);
+  /* eslint-enable no-console */
 }
 
 /** List recordings on the device, sorted latest-first. */
