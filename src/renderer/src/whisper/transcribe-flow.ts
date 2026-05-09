@@ -37,21 +37,23 @@ function selectedFormats(): TranscribeFormat[] {
   return out;
 }
 
+/** Path separator that works for the platforms we ship to. */
+function joinPath(dir: string, name: string): string {
+  // The renderer doesn't have access to node:path, but '/' works on macOS
+  // and Linux, and Node on Windows accepts mixed separators.
+  return dir.endsWith('/') || dir.endsWith('\\') ? `${dir}${name}` : `${dir}/${name}`;
+}
+
 /**
- * Resolve an absolute path to the on-disk file for a given recording.
- * Returns null if the file isn't accessible — caller handles the error.
+ * Resolve the absolute on-disk path for a recording's saved file.
+ * Returns null if no folder is set or the file isn't on disk yet.
  */
 async function resolveAudioPath(file: RecordingFile): Promise<string | null> {
-  if (!state.dirHandle) return null;
+  if (!state.dirPath) return null;
   const saveName = applyExtensionPreference(file.name, getMp3Pref());
-  try {
-    const handle = await state.dirHandle.getFileHandle(saveName);
-    const fileObj = await handle.getFile();
-    const path = window.hidock.getPathForFile(fileObj);
-    return path || null;
-  } catch {
-    return null;
-  }
+  const path = joinPath(state.dirPath, saveName);
+  const exists = await window.hidock.fs.pathExists(path);
+  return exists ? path : null;
 }
 
 function basePathFor(audioPath: string): string {
@@ -88,7 +90,7 @@ export async function transcribeFile(
     log('No default model — pick one in the Transcription panel.', 'warning');
     return;
   }
-  if (!state.dirHandle) {
+  if (!state.dirPath) {
     log('Choose a save folder before transcribing.', 'warning');
     return;
   }
@@ -98,9 +100,10 @@ export async function transcribeFile(
     return;
   }
 
+  const saveName = applyExtensionPreference(file.name, getMp3Pref());
   const audioPath = await resolveAudioPath(file);
   if (!audioPath) {
-    log(`Couldn't find ${file.name} on disk — download it first.`, 'error');
+    log(`Couldn't find ${saveName} in ${state.dirPath} — download it first.`, 'error');
     return;
   }
 
@@ -207,7 +210,7 @@ export function maybeAutoTranscribe(
   const prefs = getPrefs();
   if (!prefs.autoTranscribe) return;
   if (!prefs.defaultModel) return;
-  if (!state.dirHandle) return;
+  if (!state.dirPath) return;
   queue.push({ file, opts });
   runWorker();
 }

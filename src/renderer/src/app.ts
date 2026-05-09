@@ -38,7 +38,7 @@ import { wireLogControls, log } from './ui/log.js';
 import {
   chooseDirectory,
   clearDirectoryChoice,
-  tryRestoreDirHandle
+  tryRestoreDirPath
 } from './ui/save-target.js';
 import { refreshStoragePanel } from './ui/storage-panel.js';
 import { wirePreviewClose } from './ui/preview.js';
@@ -208,13 +208,9 @@ function applyExt(name: string): string {
 function wireSaveTargetButtons(): void {
   document.getElementById('chooseFolderBtn')!.addEventListener('click', chooseDirectory);
   document.getElementById('clearFolderBtn')!.addEventListener('click', clearDirectoryChoice);
-
-  if (!('showDirectoryPicker' in window)) {
-    const btn = document.getElementById('chooseFolderBtn') as HTMLButtonElement | null;
-    if (btn) btn.style.display = 'none';
-    const path = document.getElementById('saveTargetPath');
-    if (path) path.textContent = 'Browser downloads only · directory picker unavailable in this browser';
-  }
+  // The native folder picker is always available in Electron — no need to
+  // hide the Choose Folder button (the standalone HTML's browser-fallback
+  // case doesn't apply here).
 }
 
 function wireUsbLifecycleEvents(): void {
@@ -285,9 +281,9 @@ export async function init(): Promise<void> {
     applyFilter();
   }
 
-  if ('showDirectoryPicker' in window) {
-    await tryRestoreDirHandle();
-  }
+  // Path-based folder persistence — auto-restores the last chosen folder
+  // on every startup without requiring a permission re-grant.
+  await tryRestoreDirPath();
 
   // Whisper panel mounts independently of USB state — the user can download
   // a model while the device is unplugged. Errors here shouldn't abort init.

@@ -51,18 +51,36 @@ const whisperApi = {
   }
 };
 
+const fsApi = {
+  /** Open the OS folder picker. Returns the chosen absolute path or null on cancel. */
+  chooseDirectory(defaultPath?: string): Promise<string | null> {
+    return ipcRenderer.invoke('dialog:choose-directory', { defaultPath });
+  },
+  /** Write a blob's bytes to `<dirPath>/<fileName>`. Creates `dirPath` if missing. */
+  writeFile(dirPath: string, fileName: string, bytes: ArrayBuffer): Promise<void> {
+    return ipcRenderer.invoke('fs:write-file', { dirPath, fileName, bytes });
+  },
+  pathExists(path: string): Promise<boolean> {
+    return ipcRenderer.invoke('fs:path-exists', path);
+  },
+  /** List file entries (not directories) directly under `dirPath`. */
+  listDir(dirPath: string): Promise<string[]> {
+    return ipcRenderer.invoke('fs:list-dir', dirPath);
+  }
+};
+
 const api = {
   platform: process.platform,
   version: process.env['npm_package_version'] ?? '0.0.0',
   /**
    * Resolve an absolute filesystem path for a File obtained from the
-   * renderer (e.g. via `dirHandle.getFileHandle(name).then(h => h.getFile())`).
-   * Required to hand the file to the main-process whisper pipeline since
-   * IPC can't carry FileSystemFileHandle objects.
+   * renderer. Kept around for any future code that gets a File from a
+   * drop event or input — the main save-folder flow uses `fs.*` instead.
    */
   getPathForFile(file: File): string {
     return webUtils.getPathForFile(file);
   },
+  fs: fsApi,
   whisper: whisperApi
 };
 

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, session, shell } from 'electron';
 import { join } from 'node:path';
 import { buildAppMenu } from './menu.js';
+import { registerFileIpc } from './file-ipc.js';
 import { registerWhisperIpc } from './whisper/ipc.js';
 import {
   HIDOCK_P1_PRODUCT_ID,
@@ -73,6 +74,7 @@ function configureUsbPermissions(): void {
 
 app.whenReady().then(() => {
   configureUsbPermissions();
+  registerFileIpc();
   registerWhisperIpc();
   buildAppMenu();
   const initialWindow = createWindow();

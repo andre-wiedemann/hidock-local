@@ -8,7 +8,6 @@
 // kept for the occasional run where the user clears their folder choice.
 
 import { state } from '../state.js';
-import { dbDel } from '../storage/persistence.js';
 import { saveBlobToFolder } from './save-target.js';
 import { log } from './log.js';
 
@@ -29,21 +28,20 @@ export async function presentSaveableBlob(
   const sizeMB = (blob.size / 1024 / 1024).toFixed(1);
   const isZip = filename.toLowerCase().endsWith('.zip');
 
-  if (state.dirHandle) {
+  if (state.dirPath) {
     try {
       await saveBlobToFolder(blob, filename);
       markSaved(filename, blob.size);
       appendSavedRow(filename, sizeMB, fileCount);
-      log(`✅ Wrote ${filename} (${sizeMB} MB) to chosen folder`, 'success');
+      log(`✅ Wrote ${filename} (${sizeMB} MB) to ${state.dirPath}`, 'success');
       return;
     } catch (err) {
       log(
         `Direct-to-disk write failed for ${filename}: ${(err as Error).message} — falling back to browser download`,
         'warning'
       );
-      // Forget the broken handle so we don't keep retrying it.
-      state.dirHandle = null;
-      await dbDel('dirHandle').catch(() => {});
+      // Don't auto-clear dirPath — the user might fix the folder permission
+      // issue and retry. Surfacing the error in the log is enough.
     }
   }
 

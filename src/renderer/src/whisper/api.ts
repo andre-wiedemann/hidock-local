@@ -6,11 +6,19 @@
 
 import type { WhisperApi } from '../../../shared/whisper.js';
 
+interface FsApi {
+  chooseDirectory(defaultPath?: string): Promise<string | null>;
+  writeFile(dirPath: string, fileName: string, bytes: ArrayBuffer): Promise<void>;
+  pathExists(path: string): Promise<boolean>;
+  listDir(dirPath: string): Promise<string[]>;
+}
+
 interface HidockGlobal {
   platform: string;
   version: string;
   /** Resolve a File (from FileSystemFileHandle) to an absolute disk path. */
   getPathForFile(file: File): string;
+  fs: FsApi;
   whisper: WhisperApi;
 }
 

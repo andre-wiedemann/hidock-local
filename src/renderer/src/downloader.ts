@@ -185,7 +185,7 @@ export async function downloadAllOrZip(filesToDownload: RecordingFile[]): Promis
     log('No files to download', 'warning');
     return;
   }
-  if (state.dirHandle) {
+  if (state.dirPath) {
     await downloadStreamToFolder(filesToDownload);
     return;
   }
