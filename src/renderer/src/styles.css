@@ -748,6 +748,35 @@ input[type="checkbox"]:focus-visible {
   color: #1a0000;
 }
 
+/* ─── Per-row download button ────────────────── */
+.file-item .download-btn {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--text-muted);
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  margin: 0 6px 0 0;
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.file-item .download-btn:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.file-item .download-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+/* Hide once the file is on disk or while download/error flows handle it */
+.file-item.is-saved .download-btn,
+.file-item.success .download-btn,
+.file-item.error .download-btn,
+.file-item.downloading .download-btn { display: none; }
+
 /* ─── Per-row transcribe button ──────────────── */
 .file-item .transcribe-btn {
   background: transparent;

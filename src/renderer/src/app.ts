@@ -31,6 +31,7 @@ import {
   applySkipSavedToggle,
   refreshAllTranscribeButtons,
   renderFileList,
+  setDownloadHandler,
   setRetryHandler,
   setVisibleSelected
 } from './ui/file-list.js';
@@ -48,6 +49,7 @@ import {
 } from './downloader.js';
 import { initWhisperPanel } from './whisper/settings-panel.js';
 import { subscribe as subscribeWhisper } from './whisper/store.js';
+import { setDownloadFn } from './whisper/transcribe-flow.js';
 import { HIDOCK_P1_PRODUCT_ID, HIDOCK_P1_VENDOR_ID } from '../../shared/types.js';
 
 async function loadFileListLive(silent = false): Promise<void> {
@@ -175,8 +177,13 @@ function wireFileListControls(): void {
     setVisibleSelected(true);
   });
 
-  // Per-row retry → single-file download.
+  // Per-row retry + download buttons both call downloadSingle. The
+  // transcribe flow uses the same fn for its auto-download-on-demand
+  // path; injected here to avoid a circular import between downloader.ts
+  // and whisper/transcribe-flow.ts.
   setRetryHandler((file) => downloadSingle(file));
+  setDownloadHandler((file) => downloadSingle(file));
+  setDownloadFn((file) => downloadSingle(file));
 }
 
 function wireDownloadButtons(): void {

@@ -8,12 +8,17 @@ import { previewFile } from './preview.js';
 import { getPrefs } from '../whisper/store.js';
 import { transcribeFile } from '../whisper/transcribe-flow.js';
 
-type RetryHandler = (file: RecordingFile) => void | Promise<void>;
+type FileHandler = (file: RecordingFile) => void | Promise<void>;
 
-let retryHandler: RetryHandler = () => {};
+let retryHandler: FileHandler = () => {};
+let downloadHandler: FileHandler = () => {};
 
-export function setRetryHandler(handler: RetryHandler): void {
+export function setRetryHandler(handler: FileHandler): void {
   retryHandler = handler;
+}
+
+export function setDownloadHandler(handler: FileHandler): void {
+  downloadHandler = handler;
 }
 
 function getSaveFilename(name: string): string {
@@ -63,12 +68,15 @@ export function renderFileList(metaSuffix?: string): void {
     const sizeText = file.size > 0 ? formatBytes(file.size) : '—';
     const initiallyChecked = saved && isSkipSavedActive() ? '' : 'checked';
 
-    const canTranscribe = saved && !!getPrefs().defaultModel;
-    const transcribeTitle = !saved
-      ? 'Download the file first'
-      : !getPrefs().defaultModel
-        ? 'Pick a default model in the Transcription panel'
-        : 'Transcribe with whisper.cpp';
+    const hasModel = !!getPrefs().defaultModel;
+    // T is enabled whenever a model + folder are set; if the file isn't
+    // on disk yet, the transcribe flow downloads it first automatically.
+    const canTranscribe = hasModel;
+    const transcribeTitle = !hasModel
+      ? 'Pick a default model in the Transcription panel'
+      : saved
+        ? 'Transcribe with whisper.cpp'
+        : 'Transcribe (downloads the file first)';
 
     item.innerHTML = `
       <label style="display: flex; align-items: center; flex: 1; min-width: 0; cursor: pointer; gap: 14px; padding: 11px 0 11px 24px;">
@@ -76,6 +84,7 @@ export function renderFileList(metaSuffix?: string): void {
         <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${badge}${file.name}</span>
         <span class="file-size">${sizeText}</span>
       </label>
+      <button class="download-btn" type="button" title="Download to chosen folder">↓</button>
       <button class="retry-btn" type="button" title="Retry this file">↻</button>
       <button class="transcribe-btn" type="button" title="${transcribeTitle}" ${canTranscribe ? '' : 'disabled'}>T</button>
       <button class="play-btn" type="button" title="Preview">▶</button>
@@ -136,6 +145,12 @@ export function renderFileList(metaSuffix?: string): void {
       transcribeFile(state.files[index]).catch(() => {
         // transcribeFile already logs its own errors.
       });
+    });
+
+    const downloadBtn = item.querySelector('.download-btn') as HTMLButtonElement;
+    downloadBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      downloadHandler(state.files[index]);
     });
 
     listDiv.appendChild(item);
@@ -260,13 +275,12 @@ function refreshTranscribeButton(row: HTMLElement, saved: boolean): void {
   const btn = row.querySelector('.transcribe-btn') as HTMLButtonElement | null;
   if (!btn) return;
   const hasModel = !!getPrefs().defaultModel;
-  const canTranscribe = saved && hasModel;
-  btn.disabled = !canTranscribe;
-  btn.title = !saved
-    ? 'Download the file first'
-    : !hasModel
-      ? 'Pick a default model in the Transcription panel'
-      : 'Transcribe with whisper.cpp';
+  btn.disabled = !hasModel;
+  btn.title = !hasModel
+    ? 'Pick a default model in the Transcription panel'
+    : saved
+      ? 'Transcribe with whisper.cpp'
+      : 'Transcribe (downloads the file first)';
 }
 
 /**

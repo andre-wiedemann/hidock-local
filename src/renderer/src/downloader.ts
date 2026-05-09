@@ -83,6 +83,13 @@ export async function downloadSingle(file: RecordingFile): Promise<void> {
     log('Connect the device first', 'warning');
     return;
   }
+  // Refuse to start a single download while a batch is running — they'd
+  // race over the same USB IN endpoint and corrupt both streams.
+  const allBtn = document.getElementById('downloadAllBtn') as HTMLButtonElement | null;
+  if (allBtn?.disabled) {
+    log('Already downloading — wait for the current batch to finish.', 'warning');
+    return;
+  }
 
   state.stopRequested = false;
   clearSavedFilesPanel();

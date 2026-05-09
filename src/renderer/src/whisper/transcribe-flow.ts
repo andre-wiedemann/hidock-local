@@ -24,6 +24,18 @@ import { getPrefs } from './store.js';
 let activeRequestId: string | null = null;
 let progressUnsub: (() => void) | null = null;
 
+// Caller-injected single-file downloader. Wired in app.ts during init —
+// breaks what would otherwise be a circular import between this module
+// and downloader.ts (which already imports maybeAutoTranscribe from here).
+type DownloadFn = (file: RecordingFile) => Promise<void>;
+let downloadFn: DownloadFn = async () => {
+  log('Internal error: download function not wired up.', 'error');
+};
+
+export function setDownloadFn(fn: DownloadFn): void {
+  downloadFn = fn;
+}
+
 function getMp3Pref(): boolean {
   return (document.getElementById('useMp3Ext') as HTMLInputElement | null)?.checked ?? true;
 }
@@ -100,13 +112,6 @@ export async function transcribeFile(
     return;
   }
 
-  const saveName = applyExtensionPreference(file.name, getMp3Pref());
-  const audioPath = await resolveAudioPath(file);
-  if (!audioPath) {
-    log(`Couldn't find ${saveName} in ${state.dirPath} — download it first.`, 'error');
-    return;
-  }
-
   if (activeRequestId) {
     log('A transcription is already running. Wait for it to finish.', 'warning');
     return;
@@ -118,18 +123,39 @@ export async function transcribeFile(
       : `req-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   activeRequestId = requestId;
 
-  if (!opts.quiet) {
-    showTransferPanel();
-    setSpeedDisplay(0);
-    setEtaDisplay(NaN);
-    updateProgress(0, 1, `Transcribing: ${file.name}`);
-  }
-  setTranscribeProgress('preparing', 0);
-  ensureProgressSubscription(requestId);
-
-  if (!opts.quiet) log(`Transcribing ${file.name}…`, 'info');
-
   try {
+    // Step 1: ensure the file exists on disk. Auto-download if not.
+    const saveName = applyExtensionPreference(file.name, getMp3Pref());
+    let audioPath = await resolveAudioPath(file);
+    if (!audioPath) {
+      if (!state.device) {
+        log(
+          `${saveName} isn't downloaded yet and the device isn't connected.`,
+          'error'
+        );
+        return;
+      }
+      log(`${saveName} not on disk — downloading first…`, 'info');
+      await downloadFn(file);
+      audioPath = await resolveAudioPath(file);
+      if (!audioPath) {
+        log(`Download didn't produce a file — can't transcribe.`, 'error');
+        return;
+      }
+    }
+
+    // Step 2: kick off transcription with progress wiring.
+    if (!opts.quiet) {
+      showTransferPanel();
+      setSpeedDisplay(0);
+      setEtaDisplay(NaN);
+      updateProgress(0, 1, `Transcribing: ${file.name}`);
+    }
+    setTranscribeProgress('preparing', 0);
+    ensureProgressSubscription(requestId);
+
+    if (!opts.quiet) log(`Transcribing ${file.name}…`, 'info');
+
     const result = await whisperApi().transcribe({
       requestId,
       audioPath,
