@@ -20,13 +20,14 @@ import {
 
 /** List recordings on the device, sorted latest-first. */
 export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[]> {
-  // Param 0x0E goes in byte 7 (see protocol.ts). We don't drain the IN
-  // endpoint here despite the storage-info-fails-→-truncated-list
-  // correlation; an experimental drain right before this transferOut
-  // produced an empty response (the drain itself seems to disturb
-  // some firmware state). The drain inside getStorageInfo's retry
-  // loop is enough.
-  const response = await sendCommand(
+  // The HiDock truncates its file-list response in some session states
+  // (correlates with storage-info failure). Sending the command twice
+  // and keeping the longer response reliably lands us in the "complete"
+  // state on the second try — the first call seems to prime the
+  // device's file-list buffer even when its storage-info reply got
+  // dropped. Both calls cost ~50ms; cheap insurance against the
+  // truncation. Param 0x0E goes in byte 7 (see protocol.ts).
+  const r1 = await sendCommand(
     device,
     CMD_GROUP_SYSTEM,
     SUBCMD_FILE_LIST,
@@ -35,6 +36,26 @@ export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[
     null,
     { multiChunk: true, readSize: 32768 }
   );
+  // Tiny pause to let the device settle between identical commands.
+  await sleep(150);
+  const r2 = await sendCommand(
+    device,
+    CMD_GROUP_SYSTEM,
+    SUBCMD_FILE_LIST,
+    0x0e,
+    0,
+    null,
+    { multiChunk: true, readSize: 32768 }
+  );
+  const r1Len = r1?.length ?? 0;
+  const r2Len = r2?.length ?? 0;
+  const response = r1Len >= r2Len ? r1 : r2;
+  if (r1Len !== r2Len) {
+    /* eslint-disable-next-line no-console */
+    console.log(
+      `[file-list] response sizes: r1=${r1Len}B r2=${r2Len}B — using ${r1Len >= r2Len ? 'r1' : 'r2'}`
+    );
+  }
   if (!response || response.length <= 12) return [];
   /* eslint-disable no-console */
   console.log(`[file-list] received ${response.length} bytes from device`);
@@ -215,7 +236,7 @@ export async function downloadFile(
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function rejectAfter<T>(ms: number): Promise<T> {
