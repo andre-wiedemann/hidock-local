@@ -87,3 +87,19 @@ export interface WhisperError {
   code: WhisperErrorCode;
   message: string;
 }
+
+// ─── Renderer-facing API shape ───────────────────────────────────────────
+// This interface is the source of truth for both preload (which implements
+// it) and renderer (which consumes it via window.hidock.whisper).
+
+export interface WhisperApi {
+  hasBinary(): Promise<boolean>;
+  transcribe(req: TranscribeRequest): Promise<TranscribeResult>;
+  cancel(requestId: string): Promise<void>;
+  listModels(): Promise<ModelInfo[]>;
+  downloadModel(name: string): Promise<void>;
+  cancelDownload(name: string): Promise<void>;
+  deleteModel(name: string): Promise<void>;
+  onProgress(cb: (p: TranscribeProgress) => void): () => void;
+  onDownloadProgress(cb: (p: ModelDownloadProgress) => void): () => void;
+}

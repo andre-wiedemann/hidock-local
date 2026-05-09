@@ -45,6 +45,7 @@ import {
   downloadAllOrZip,
   downloadSingle
 } from './downloader.js';
+import { initWhisperPanel } from './whisper/settings-panel.js';
 import { HIDOCK_P1_PRODUCT_ID, HIDOCK_P1_VENDOR_ID } from '../../shared/types.js';
 
 async function loadFileListLive(silent = false): Promise<void> {
@@ -285,6 +286,12 @@ export async function init(): Promise<void> {
   if ('showDirectoryPicker' in window) {
     await tryRestoreDirHandle();
   }
+
+  // Whisper panel mounts independently of USB state — the user can download
+  // a model while the device is unplugged. Errors here shouldn't abort init.
+  initWhisperPanel().catch((err) => {
+    console.error('Whisper panel init failed:', err);
+  });
 
   // Auto-reconnect runs last so the UI is fully wired by the time the device
   // call returns.

@@ -894,6 +894,170 @@ input[type="checkbox"]:focus-visible {
 .log-info    { color: var(--info); }
 .log-warning { color: var(--warning); }
 
+/* ─── Transcription panel ─────────────────────────── */
+.whisper-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+.whisper-summary .label {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.whisper-summary .path {
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.model-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.model-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 11px 18px;
+  border-bottom: 1px solid var(--line);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  position: relative;
+}
+.model-row:last-child { border-bottom: none; }
+.model-row.is-default {
+  background: linear-gradient(180deg, rgba(93, 212, 155, 0.04), transparent);
+  border-left: 2px solid var(--success);
+}
+.model-row.is-downloaded:not(.is-default) {
+  border-left: 2px solid transparent;
+}
+
+.model-row .model-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.model-row .model-label .name {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.model-row .model-label .size {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.model-row .model-status {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 96px;
+  text-align: right;
+}
+.model-row.is-default .model-status { color: var(--success); }
+.model-row .model-status .dl-pct { color: var(--accent); }
+
+.model-row .model-actions {
+  display: flex;
+  gap: 6px;
+}
+.model-row .model-actions button {
+  padding: 6px 12px;
+  font-size: 9.5px;
+}
+
+.model-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--surface-3);
+}
+.model-progress .bar-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-warm));
+  transition: width 0.2s;
+}
+
+.whisper-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  align-items: center;
+}
+.whisper-options .toggle-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 7px 12px;
+  border: 1px solid var(--line-strong);
+  user-select: none;
+}
+.whisper-options .toggle-inline:has(input:checked) {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+.whisper-options .toggle-inline input { width: 14px; height: 14px; }
+.whisper-options .toggle-inline:has(input:disabled) { opacity: 0.4; cursor: not-allowed; }
+
+.whisper-options .lang-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-3);
+  font-family: 'JetBrains Mono', monospace;
+}
+.whisper-options .lang-input span {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.whisper-options .lang-input input {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  width: 60px;
+  padding: 4px 0;
+  outline: none;
+}
+
 /* ─── Scrollbars ──────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--surface-1); }

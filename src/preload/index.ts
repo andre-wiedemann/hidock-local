@@ -5,12 +5,15 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
+  ModelDownloadProgress,
+  ModelInfo,
   TranscribeProgress,
   TranscribeRequest,
   TranscribeResult
 } from '../shared/whisper.js';
 
 const PROGRESS_CHANNEL = 'whisper:progress';
+const DOWNLOAD_PROGRESS_CHANNEL = 'whisper:download-progress';
 
 const whisperApi = {
   hasBinary(): Promise<boolean> {
@@ -22,15 +25,29 @@ const whisperApi = {
   cancel(requestId: string): Promise<void> {
     return ipcRenderer.invoke('whisper:cancel', requestId);
   },
-  /**
-   * Subscribe to progress events. Callback receives every TranscribeProgress
-   * emitted by the main process; filter by `requestId` if multiple
-   * transcriptions are in flight. Returns an unsubscribe function.
-   */
+  listModels(): Promise<ModelInfo[]> {
+    return ipcRenderer.invoke('whisper:list-models');
+  },
+  downloadModel(name: string): Promise<void> {
+    return ipcRenderer.invoke('whisper:download-model', name);
+  },
+  cancelDownload(name: string): Promise<void> {
+    return ipcRenderer.invoke('whisper:cancel-download', name);
+  },
+  deleteModel(name: string): Promise<void> {
+    return ipcRenderer.invoke('whisper:delete-model', name);
+  },
+  /** Subscribe to transcription progress events. */
   onProgress(callback: (p: TranscribeProgress) => void): () => void {
     const handler = (_event: unknown, payload: TranscribeProgress): void => callback(payload);
     ipcRenderer.on(PROGRESS_CHANNEL, handler);
     return () => ipcRenderer.off(PROGRESS_CHANNEL, handler);
+  },
+  /** Subscribe to model-download progress events. */
+  onDownloadProgress(callback: (p: ModelDownloadProgress) => void): () => void {
+    const handler = (_event: unknown, payload: ModelDownloadProgress): void => callback(payload);
+    ipcRenderer.on(DOWNLOAD_PROGRESS_CHANNEL, handler);
+    return () => ipcRenderer.off(DOWNLOAD_PROGRESS_CHANNEL, handler);
   }
 };
 
