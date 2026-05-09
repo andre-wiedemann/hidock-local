@@ -60,22 +60,14 @@ function bcdEncodeNow(d: Date = new Date()): Uint8Array {
  */
 export async function runInitSequence(device: ClaimedDevice): Promise<void> {
   resetSequence();
-  /* eslint-disable no-console */
-  const log = async (label: string, cmd: number, body?: Uint8Array): Promise<void> => {
-    const t0 = performance.now();
-    const r = await sendCmd(device, cmd, body ?? null, { readSize: 4096, timeoutMs: 2000 });
-    const dt = (performance.now() - t0).toFixed(0);
-    const head = r ? Array.from(r.slice(0, 16)).map((b) => b.toString(16).padStart(2, '0')).join(' ') : '(null)';
-    console.log(`[init] ${label}  cmd=0x${cmd.toString(16).padStart(4, '0')}  ← ${r?.length ?? 0}B  ${dt}ms  ${head}${r && r.length > 16 ? '…' : ''}`);
-  };
-  await log('QUERY_DEVICE_INFO    ', CMD_QUERY_DEVICE_INFO);
-  await log('QUERY_DEVICE_TIME    ', CMD_QUERY_DEVICE_TIME);
-  await log('SET_DEVICE_TIME      ', CMD_SET_DEVICE_TIME, bcdEncodeNow());
-  await log('GET_SETTINGS         ', CMD_GET_SETTINGS);
-  await log('GET_RECORDING_QUALITY', CMD_GET_RECORDING_QUALITY);
-  await log('READ_CARD_INFO       ', CMD_READ_CARD_INFO);
-  await log('GET_BATTERY_STATUS   ', CMD_GET_BATTERY_STATUS);
-  /* eslint-enable no-console */
+  const opts = { readSize: 4096, timeoutMs: 2000 };
+  await sendCmd(device, CMD_QUERY_DEVICE_INFO, null, opts);
+  await sendCmd(device, CMD_QUERY_DEVICE_TIME, null, opts);
+  await sendCmd(device, CMD_SET_DEVICE_TIME, bcdEncodeNow(), opts);
+  await sendCmd(device, CMD_GET_SETTINGS, null, opts);
+  await sendCmd(device, CMD_GET_RECORDING_QUALITY, null, opts);
+  await sendCmd(device, CMD_READ_CARD_INFO, null, opts);
+  await sendCmd(device, CMD_GET_BATTERY_STATUS, null, opts);
 }
 
 /** List recordings on the device, sorted latest-first. */
@@ -102,38 +94,6 @@ export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[
   // works the same way as before.
   const cleaned = new Uint8Array(12 + cleanPayload.length);
   cleaned.set(cleanPayload, 12);
-
-  /* eslint-disable no-console */
-  console.log(`[file-list] received ${response.length} bytes from device`);
-  console.log(`[file-list] after chunk-header strip: ${cleaned.length} bytes`);
-  const payload = cleanPayload;
-  const FULL_RE = /(REC_\d{8}_\d{6}\.hda|\d{4}[A-Za-z]{3}\d{2}-\d{6}-Rec\d+\.hda)/i;
-  const records: { idx: number; ascii: string; hex: string; matchesRegex: boolean }[] = [];
-  for (let i = 0; i + 4 <= payload.length; i++) {
-    if (
-      payload[i] === 0x05 && payload[i + 1] === 0x00 &&
-      payload[i + 2] === 0x00 && payload[i + 3] === 0x1b
-    ) {
-      const start = i + 4;
-      const end = Math.min(start + 40, payload.length);
-      let ascii = '';
-      let hex = '';
-      for (let j = start; j < end; j++) {
-        const b = payload[j];
-        ascii += b >= 32 && b < 127 ? String.fromCharCode(b) : '·';
-        hex += b.toString(16).padStart(2, '0') + ' ';
-      }
-      records.push({ idx: records.length, ascii, hex, matchesRegex: FULL_RE.test(ascii) });
-      i += 3;
-    }
-  }
-  const orphans = records.filter((r) => !r.matchesRegex);
-  console.log(`[file-list] records on wire: ${records.length}, regex misses: ${orphans.length}`);
-  for (const r of orphans) {
-    console.log(`  #${r.idx} ascii: ${r.ascii}`);
-    console.log(`  #${r.idx} hex:   ${r.hex}`);
-  }
-  /* eslint-enable no-console */
   return parseFileListResponse(cleaned);
 }
 

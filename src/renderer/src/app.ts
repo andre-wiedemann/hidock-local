@@ -158,7 +158,16 @@ function wireConnectionButtons(): void {
 }
 
 function wireFileListControls(): void {
-  document.getElementById('listFilesBtn')!.addEventListener('click', () => loadFileListLive());
+  // Mid-session List Files clicks land in a "warm" device state where
+  // the response is truncated by 9 records (the latest, including
+  // April recordings). The HiDock's protocol state machine doesn't
+  // accept a re-init while the session is active, and every other
+  // workaround we tried either broke the response entirely or made
+  // it worse. Reloading the renderer triggers auto-reconnect → fresh
+  // init → reliable 224-record listing. ~250 ms cost.
+  document.getElementById('listFilesBtn')!.addEventListener('click', () => {
+    window.location.reload();
+  });
 
   document.getElementById('selectAllBtn')!.addEventListener('click', () => setVisibleSelected(true));
   document.getElementById('deselectAllBtn')!.addEventListener('click', () => setVisibleSelected(false));
