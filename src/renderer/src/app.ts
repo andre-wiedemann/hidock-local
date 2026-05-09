@@ -29,6 +29,7 @@ import {
 import {
   applyFilter,
   applySkipSavedToggle,
+  refreshAllPlayingIndicators,
   refreshAllSavedStates,
   refreshAllTranscribeButtons,
   renderFileList,
@@ -45,7 +46,7 @@ import {
   tryRestoreDirPath
 } from './ui/save-target.js';
 import { refreshStoragePanel } from './ui/storage-panel.js';
-import { wirePreviewClose } from './ui/preview.js';
+import { onPreviewStateChange, wirePreviewClose } from './ui/preview.js';
 import { wireCollapsible } from './ui/collapsible.js';
 import {
   downloadAllOrZip,
@@ -347,6 +348,11 @@ export async function init(): Promise<void> {
   // default, model is deleted), refresh every visible T button so users
   // don't have to re-list files to see them enable.
   subscribeWhisper(() => refreshAllTranscribeButtons());
+
+  // Sync per-row play indicators whenever the mini-player starts, pauses,
+  // resumes, or closes — including pause/play triggered from the
+  // mini-player's own controls.
+  onPreviewStateChange(refreshAllPlayingIndicators);
 
   // Auto-reconnect runs last so the UI is fully wired by the time the device
   // call returns.

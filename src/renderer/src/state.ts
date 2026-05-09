@@ -27,6 +27,10 @@ export interface AppState {
   stopRequested: boolean;
   previewing: boolean;
   previewBlobUrl: string | null;
+  /** Index in `files` of the recording currently loaded in the mini-player, or null. */
+  previewingFileIndex: number | null;
+  /** True while the mini-player audio is actively playing (between play/pause). */
+  previewIsPlaying: boolean;
   /** Index of last file checkbox the user clicked, for shift-range selection. */
   lastClickedFileIndex: number | null;
 }
@@ -39,5 +43,7 @@ export const state: AppState = {
   stopRequested: false,
   previewing: false,
   previewBlobUrl: null,
+  previewingFileIndex: null,
+  previewIsPlaying: false,
   lastClickedFileIndex: null
 };

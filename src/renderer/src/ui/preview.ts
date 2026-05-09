@@ -11,6 +11,33 @@ export function isBatchInProgress(): boolean {
   return !!btn && btn.disabled;
 }
 
+const PREVIEW_CHANGE_EVENT = 'hidock:preview-changed';
+
+/**
+ * Notify subscribers (the file-list module) that the previewing file or
+ * play/pause state changed so they can refresh their per-row indicators.
+ * Loose coupling via a window-scoped event keeps preview.ts and
+ * file-list.ts free of circular imports.
+ */
+function emitPreviewChange(): void {
+  window.dispatchEvent(new CustomEvent(PREVIEW_CHANGE_EVENT));
+}
+
+/** Subscribe to preview-state changes. Returns an unsubscribe function. */
+export function onPreviewStateChange(callback: () => void): () => void {
+  const handler = (): void => callback();
+  window.addEventListener(PREVIEW_CHANGE_EVENT, handler);
+  return () => window.removeEventListener(PREVIEW_CHANGE_EVENT, handler);
+}
+
+/** Toggle the mini-player between play and pause. No-op if no audio loaded. */
+export function togglePreviewPlayback(): void {
+  const audioEl = document.getElementById('miniPlayerAudio') as HTMLAudioElement | null;
+  if (!audioEl || !audioEl.src) return;
+  if (audioEl.paused) audioEl.play().catch(() => {});
+  else audioEl.pause();
+}
+
 function joinPath(dir: string, name: string): string {
   return dir.endsWith('/') || dir.endsWith('\\') ? `${dir}${name}` : `${dir}/${name}`;
 }
@@ -60,6 +87,9 @@ export async function previewFile(file: RecordingFile | undefined): Promise<void
   const audioEl = document.getElementById('miniPlayerAudio') as HTMLAudioElement;
 
   const idx = state.files.indexOf(file);
+  state.previewingFileIndex = idx >= 0 ? idx : null;
+  state.previewIsPlaying = false;
+  emitPreviewChange();
   const rows = document.querySelectorAll('.file-item');
   const playBtn = idx >= 0 ? rows[idx]?.querySelector('.play-btn') as HTMLButtonElement | null : null;
 
@@ -84,6 +114,19 @@ export async function previewFile(file: RecordingFile | undefined): Promise<void
     audioEl.src = state.previewBlobUrl;
     titleEl.textContent = file.name;
 
+    // Ensure each preview only attaches one set of audio-state listeners.
+    audioEl.onplay = (): void => {
+      state.previewIsPlaying = true;
+      emitPreviewChange();
+    };
+    audioEl.onpause = (): void => {
+      state.previewIsPlaying = false;
+      emitPreviewChange();
+    };
+    audioEl.onended = (): void => {
+      state.previewIsPlaying = false;
+      emitPreviewChange();
+    };
     audioEl.play().catch(() => {});
     log(
       `Preview ready (${loaded.source}): ${file.name} (${formatBytes(loaded.bytes.length)})`,
@@ -112,6 +155,9 @@ export function closePreview(): void {
     } catch {
       // Ignore.
     }
+    audioEl.onplay = null;
+    audioEl.onpause = null;
+    audioEl.onended = null;
     audioEl.removeAttribute('src');
     audioEl.load();
   }
@@ -120,6 +166,9 @@ export function closePreview(): void {
     URL.revokeObjectURL(state.previewBlobUrl);
     state.previewBlobUrl = null;
   }
+  state.previewingFileIndex = null;
+  state.previewIsPlaying = false;
+  emitPreviewChange();
 }
 
 export function wirePreviewClose(): void {

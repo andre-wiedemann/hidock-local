@@ -4,7 +4,7 @@
 import { state, RecordingFile } from '../state.js';
 import { dayKey, dayLabel, applyExtensionPreference } from '../util/filename.js';
 import { formatBytes } from '../util/format.js';
-import { previewFile } from './preview.js';
+import { previewFile, togglePreviewPlayback } from './preview.js';
 import { getPrefs } from '../whisper/store.js';
 import { viewOrTranscribe } from '../whisper/transcribe-flow.js';
 
@@ -139,7 +139,14 @@ export function renderFileList(metaSuffix?: string): void {
     playBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       const f = state.files[index];
-      if (f) previewFile(f);
+      if (!f) return;
+      // If this row is the currently-loaded preview, toggle play/pause
+      // in the mini-player instead of triggering a fresh preview pull.
+      if (state.previewingFileIndex === index) {
+        togglePreviewPlayback();
+      } else {
+        previewFile(f);
+      }
     });
 
     const retryBtn = item.querySelector('.retry-btn') as HTMLButtonElement;
@@ -306,6 +313,28 @@ export function refreshAllTranscribeButtons(): void {
     if (!file) return;
     const saved = isSaved(getSaveFilename(file.name));
     refreshTranscribeButton(row, saved);
+  });
+}
+
+/**
+ * Sync each row's preview indicator with `state.previewingFileIndex` and
+ * `state.previewIsPlaying`. Called from app.ts via the
+ * onPreviewStateChange subscription, so the row reflects play / pause
+ * changes regardless of whether they originated from the per-row button
+ * or the mini-player's own controls.
+ */
+export function refreshAllPlayingIndicators(): void {
+  const rows = document.querySelectorAll<HTMLElement>('#fileList .file-item');
+  rows.forEach((row) => {
+    const idx = parseInt(row.dataset['fileIndex'] ?? '', 10);
+    const isCurrent = idx === state.previewingFileIndex;
+    const isPlaying = isCurrent && state.previewIsPlaying;
+    row.classList.toggle('is-playing', isPlaying);
+    row.classList.toggle('is-current-preview', isCurrent && !isPlaying);
+    const btn = row.querySelector('.play-btn') as HTMLButtonElement | null;
+    if (btn && !btn.classList.contains('loading')) {
+      btn.textContent = isPlaying ? '⏸' : '▶';
+    }
   });
 }
 

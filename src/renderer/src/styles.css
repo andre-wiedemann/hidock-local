@@ -849,6 +849,36 @@ input[type="checkbox"]:focus-visible {
 }
 .file-item .play-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
+/* Row tinted while it's the active preview, even when paused.
+   Slightly dimmer than .downloading so the two states don't blur together. */
+.file-item.is-current-preview {
+  background: rgba(255, 125, 26, 0.05);
+}
+.file-item.is-current-preview .play-btn {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Stronger highlight when the preview is actively playing. */
+.file-item.is-playing {
+  background: var(--accent-soft);
+}
+.file-item.is-playing::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+.file-item.is-playing .play-btn {
+  color: #1a0e00;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
 /* ─── Mini player ────────────────────────────── */
 .mini-player {
   position: fixed;
