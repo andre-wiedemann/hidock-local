@@ -32,7 +32,20 @@ export async function findPairedDevice(): Promise<USBDevice | null> {
 
 /** Open the device and claim interface 0. Idempotent. */
 export async function openAndClaim(device: USBDevice): Promise<void> {
-  if (!device.opened) await device.open();
+  // Close first if the handle reports as already-opened. After a renderer
+  // reload (npm run dev hot reload, or a fresh app launch with a paired
+  // device) `device.opened` can still report true even though the
+  // underlying session is gone — transferOut then fails with
+  // "InvalidStateError: The device must be opened first". Force-close
+  // before re-opening to handle that stale state.
+  if (device.opened) {
+    try {
+      await device.close();
+    } catch {
+      // Ignore — already closed at the OS level.
+    }
+  }
+  await device.open();
   await device.selectConfiguration(1);
   await device.claimInterface(0);
 }
