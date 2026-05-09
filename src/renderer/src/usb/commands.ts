@@ -148,7 +148,18 @@ export async function downloadFile(
         rejectAfter<USBInTransferResult>(timeout)
       ]);
       if (result.data && result.data.byteLength > 0) {
-        chunk = new Uint8Array(result.data.buffer);
+        // Use byteOffset + byteLength explicitly. `new Uint8Array(buffer)`
+        // would view the entire underlying ArrayBuffer, which in some WebUSB
+        // implementations is larger than the actual transfer payload — that
+        // makes chunk[0..3] read garbage instead of the protocol header
+        // and stripChunkHeader misses every chunk after the first. (.slice()
+        // also copies the bytes off any pooled buffer the implementation
+        // might recycle on the next transfer.)
+        chunk = new Uint8Array(
+          result.data.buffer,
+          result.data.byteOffset,
+          result.data.byteLength
+        ).slice();
       }
     } catch (err) {
       if ((err as Error).message === 'timeout') {

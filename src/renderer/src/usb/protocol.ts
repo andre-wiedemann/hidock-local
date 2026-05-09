@@ -111,7 +111,11 @@ export async function sendCommand(
       timeoutMs
     );
     if (result.data && result.data.byteLength > 0) {
-      return new Uint8Array(result.data.buffer);
+      return new Uint8Array(
+        result.data.buffer,
+        result.data.byteOffset,
+        result.data.byteLength
+      ).slice();
     }
   } catch {
     // Treat timeouts as no-data; the caller may retry.
@@ -136,7 +140,11 @@ async function readMultipleChunks(
       );
 
       if (result.data && result.data.byteLength > 0) {
-        const chunk = new Uint8Array(result.data.buffer);
+        const chunk = new Uint8Array(
+          result.data.buffer,
+          result.data.byteOffset,
+          result.data.byteLength
+        ).slice();
         chunks.push(chunk);
         totalBytes += chunk.length;
 
