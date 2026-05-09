@@ -58,12 +58,12 @@ jobs:
       - name: Build app
         run: ${{ matrix.build-cmd }}
         env:
-          # Explicitly empty — we ship unsigned in v0.1.0. Set these as
-          # GitHub secrets to enable signing later.
-          CSC_LINK: ''
-          CSC_KEY_PASSWORD: ''
-          # Disable electron-builder's auto-publish; we do it ourselves below.
-          GH_TOKEN: ''
+          # No signing env vars set — leaving CSC_LINK / CSC_KEY_PASSWORD
+          # entirely undefined makes electron-builder skip signing cleanly.
+          # (Setting them to '' makes it try and fail on a malformed path.)
+          # We also don't set GH_TOKEN here — electron-builder.yml has
+          # `publish: null`, so we publish manually in the release job.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

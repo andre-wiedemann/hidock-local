@@ -19,12 +19,18 @@ mac:
       arch: [arm64, x64]
   category: public.app-category.utilities
   icon: assets/icon.icns
+  # No Apple Developer cert — explicitly disable signing so electron-builder
+  # doesn't try to auto-locate one and fail on the empty CSC_KEY_PASSWORD.
+  identity: null
 
 win:
   target:
     - target: nsis
       arch: [x64]
   icon: assets/icon.ico
+  # No code-signing cert configured. electron-builder skips Windows signing
+  # by default when WIN_CSC_LINK is unset, so SmartScreen warns on first
+  # launch but the build itself succeeds.
 
 linux:
   target:

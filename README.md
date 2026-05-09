@@ -4,6 +4,8 @@ Vendor-free, cloud-free desktop tool for the **HiDock P1** voice recorder.
 
 Pulls recordings off the device over USB without going through the manufacturer's cloud or any other intermediary. Files land directly on your disk, in a folder you choose, as plain `.mp3` you can hand straight to MacWhisper or any other audio tool.
 
+![HiDock Local main window — device panel, config panel, file list grouped by day](assets/screenshots/main-window.png)
+
 > **Status:** functional, single-developer hobby project. Used in production by the author against a 64 GB HiDock P1 since 2026-04. Open-sourced 2026-05.
 
 ## Why
