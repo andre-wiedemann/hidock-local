@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Added
+- **Local transcription via whisper.cpp.** Bundled `whisper-cli` per platform (built from pinned source v1.7.4 in CI), runs entirely on-device. Three trigger paths: per-row T button, auto-transcribe toggle, and a manual flow with live progress in the transfer panel.
+- **Models manager.** New Transcription panel lists 10 ggml models (tiny → large-v3) with size, status, and one-click download / set-default / delete. Models are streamed from Hugging Face with progress + cancellation, stored under userData.
+- **Output format selection.** Per-file outputs land as `<name>.txt`, `<name>.vtt`, `<name>.json` next to the MP3 — toggle each format independently. Optional language hint or auto-detect.
+- **Auto-transcribe queue.** Batch downloads with auto-transcribe enabled run one transcription at a time, so RAM/GPU usage stays predictable.
+
+### Changed
+- electron-builder.yml now bundles `resources/whisper/**` (asar-unpacked so binaries can run).
+- CI + release workflows cache the whisper.cpp build per `(os, arch, version)` to avoid rebuilding on every run.
+
 ## [0.1.0] — 2026-05-09
 
 Initial open-source release.

@@ -9,8 +9,14 @@ directories:
 files:
   - out/**/*
   - package.json
+  # Bundle whisper-cli built by fetch-whisper.mjs. Each runner only
+  # populates its own `resources/whisper/<plat-arch>/` so the resulting
+  # bundle is naturally platform-scoped.
+  - resources/whisper/**/*
 
 asarUnpack:
+  # Binaries can't run when packed inside the asar. Unpack the whole
+  # resources tree so child_process.spawn() can find whisper-cli at runtime.
   - resources/**
 
 mac:

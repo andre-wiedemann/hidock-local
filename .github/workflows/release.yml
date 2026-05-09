@@ -55,6 +55,15 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Cache whisper.cpp build
+        uses: actions/cache@v4
+        with:
+          path: resources/whisper
+          key: whisper-${{ runner.os }}-${{ runner.arch }}-v1.7.4
+
+      - name: Build whisper.cpp (if not cached)
+        run: npm run whisper:fetch
+
       - name: Build app
         run: ${{ matrix.build-cmd }}
         env:

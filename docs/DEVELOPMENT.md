@@ -9,16 +9,43 @@
 ## Scripts
 
 ```bash
-npm run dev         # Launch Electron in dev mode with HMR for the renderer
-npm run typecheck   # tsc --noEmit on main + renderer
-npm test            # Run Vitest unit tests (parsers)
-npm run test:watch  # Re-run tests on save
-npm run build       # Production build to out/
-npm run package     # Build + electron-builder --dir (unpacked)
-npm run package:mac # Build + macOS .dmg
-npm run package:win # Build + Windows .exe (NSIS)
-npm run package:linux # Build + Linux .AppImage
+npm run dev            # Launch Electron in dev mode with HMR for the renderer
+npm run typecheck      # tsc --noEmit on main + renderer
+npm test               # Run Vitest unit tests (parsers)
+npm run test:watch     # Re-run tests on save
+npm run build          # Production build to out/
+npm run icons          # Regenerate assets/icon.{icns,ico,png} from icon.svg
+npm run whisper:fetch  # Build whisper.cpp from source for the current platform
+npm run package        # Build + electron-builder --dir (unpacked)
+npm run package:mac    # Build + macOS .dmg
+npm run package:win    # Build + Windows .exe (NSIS)
+npm run package:linux  # Build + Linux .AppImage
 ```
+
+## One-time setup: whisper.cpp
+
+Before you can run transcription locally, you need to build the whisper-cli
+binary for your platform:
+
+```bash
+npm run whisper:fetch
+```
+
+This clones whisper.cpp at the pinned tag, builds it via CMake, and copies
+the binary to `resources/whisper/<platform>-<arch>/whisper-cli`. The script
+is idempotent — it skips if the binary already exists.
+
+Requirements:
+- **macOS**: Xcode CLT (`xcode-select --install`)
+- **Linux**: `build-essential` and `cmake`
+- **Windows**: Visual Studio Build Tools (with C++ workload) and `cmake`
+
+Build time: 3–5 min on first run. The binary is ~2 MB on macOS arm64 and
+links statically against ggml/whisper, so it's self-contained.
+
+CI runners do this automatically on every release; for dev you only need
+to run it once per machine (or after bumping `WHISPER_VERSION` in
+`tools/fetch-whisper.mjs`).
 
 ## Running in development
 
