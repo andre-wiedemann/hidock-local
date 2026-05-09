@@ -67,14 +67,15 @@ async function loadFileListLive(silent = false): Promise<void> {
     if (!silent) log('Getting file list…', 'info');
     state.files = [];
 
-    // Init only runs on connect. Re-running it on subsequent List
-    // Files calls produces all-timeouts (the device only accepts the
-    // init handshake while in a fresh post-claim state). We rely on
-    // chunk-header stripping in listFiles to handle the truncation
-    // that the "warm" state would otherwise cause.
+    // Init only runs on connect (re-running mid-session times out —
+    // the device only accepts the handshake from a fresh post-claim
+    // state). The storage-info refresh is also skipped on List Files
+    // — calling READ_CARD_INFO between FILE_LIST requests pushes the
+    // device back into the truncated "warm" state where the latest
+    // recordings disappear from the next response. Storage panel
+    // gets refreshed only on connect (inside connectDevice).
 
     await refreshSavedFromDisk();
-    await refreshStoragePanel();
 
     const entries = await listFiles(state.device);
     if (entries.length === 0) {
@@ -139,14 +140,15 @@ async function connectDevice(usbDevice: USBDevice): Promise<void> {
   await openAndClaim(usbDevice);
   setConnectedUi();
   log('Device connected', 'success');
-  // Run the vendor's full init sequence before any user-facing
-  // commands. Without this the device sits in a "warm" state where
-  // QUERY_FILE_LIST returns a truncated response. See
-  // docs/PROTOCOL_RE_NOTES.md for the protocol details.
   try {
     log('Initializing device…', 'info');
     await runInitSequence(state.device);
     log('Device initialized', 'success');
+    // Storage info is queried only here, while the device is in fresh
+    // post-init state. Calling READ_CARD_INFO later (e.g. before each
+    // List Files) drops the device into the truncated-response state
+    // and kills our 224-file ceiling.
+    await refreshStoragePanel();
   } catch (err) {
     log(`Init sequence failed: ${(err as Error).message} — listing anyway`, 'warning');
   }
