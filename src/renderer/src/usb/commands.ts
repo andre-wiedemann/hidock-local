@@ -19,8 +19,9 @@ import {
 
 /** List recordings on the device, sorted latest-first. */
 export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[]> {
-  // Param 0x0E goes in byte 7 (see protocol.ts). 32 KB is enough for ~250
-  // entries with the full record format; bump if you ever see truncation.
+  // Param 0x0E goes in byte 7 (see protocol.ts). 128 KB lets us list
+  // upwards of 600 recordings — the 32 KB cap that the standalone
+  // shipped with truncated tail entries on devices with 200+ files.
   const response = await sendCommand(
     device,
     CMD_GROUP_SYSTEM,
@@ -28,7 +29,7 @@ export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[
     0x0e,
     0,
     null,
-    { multiChunk: true, readSize: 32768 }
+    { multiChunk: true, readSize: 131072 }
   );
   if (!response || response.length <= 12) return [];
   return parseFileListResponse(response);

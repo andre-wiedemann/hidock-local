@@ -129,7 +129,9 @@ async function readMultipleChunks(
 ): Promise<Uint8Array | null> {
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
-  const MAX_ATTEMPTS = 10;
+  // Each transferIn pulls up to 16 KB. 32 attempts × 16 KB = 512 KB ceiling
+  // — matches readSize=131072 (file list) with margin for short reads.
+  const MAX_ATTEMPTS = 32;
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {

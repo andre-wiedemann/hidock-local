@@ -56,12 +56,10 @@ export const MODEL_CATALOG: ReadonlyArray<ModelCatalogEntry> = [
     sizeBytes: 466 * MIB,
     recommendation: 'Better accuracy multilingual.'
   },
-  {
-    name: 'large-v3-turbo-q5_0',
-    displayName: 'Large v3 turbo · Q5_0 quantized',
-    sizeBytes: 574 * MIB,
-    recommendation: 'Recommended quality/speed trade-off on Apple Silicon.'
-  },
+  // large-v3-turbo-q5_0 is intentionally omitted — produces empty
+  // transcriptions with whisper.cpp v1.7.4 (decoder reports 0 runs even
+  // on clean test audio). Re-add when we bump the bundled whisper.cpp
+  // version, or after verifying a re-quantized model works.
   {
     name: 'medium.en',
     displayName: 'Medium · English',
