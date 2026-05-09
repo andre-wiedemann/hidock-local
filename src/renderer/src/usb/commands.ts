@@ -1,86 +1,122 @@
 import { HIDOCK_P1_IN_ENDPOINT, HIDOCK_P1_OUT_ENDPOINT, PROTOCOL_MAGIC } from '../../../shared/types.js';
 import {
-  CMD_GROUP_STORAGE,
+  CMD_GET_BATTERY_STATUS,
+  CMD_GET_RECORDING_QUALITY,
+  CMD_GET_SETTINGS,
   CMD_GROUP_SYSTEM,
+  CMD_QUERY_DEVICE_INFO,
+  CMD_QUERY_DEVICE_TIME,
+  CMD_QUERY_FILE_LIST,
+  CMD_READ_CARD_INFO,
+  CMD_SET_DEVICE_TIME,
   ClaimedDevice,
   SUBCMD_DOWNLOAD_FILE,
-  SUBCMD_FILE_LIST,
-  SUBCMD_STORAGE_INFO,
-  SUBCMD_STORAGE_INIT,
-  sendCommand
+  resetSequence,
+  sendCmd
 } from './protocol.js';
-import { drainInEndpoint } from './protocol.js';
 import {
+  BatteryStatus,
   ParsedFileEntry,
   StorageCapacity,
   parseFileListResponse,
   stripAllProtocolHeaders,
+  stripFileListChunkHeaders,
+  tryInterpretBattery,
   tryInterpretStorage
 } from './parsers.js';
 
+/**
+ * BCD-encode the host's current local time as 7 bytes:
+ *   [YY YY MM DD HH MM SS] (each byte two BCD nibbles).
+ *
+ * Matches the vendor's `to_bcd("YYYYMMDDHHMMSS")` exactly.
+ */
+function bcdEncodeNow(d: Date = new Date()): Uint8Array {
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  const s =
+    `${d.getFullYear()}` +
+    pad(d.getMonth() + 1) +
+    pad(d.getDate()) +
+    pad(d.getHours()) +
+    pad(d.getMinutes()) +
+    pad(d.getSeconds());
+  // 14 chars → 7 bytes.
+  const out = new Uint8Array(s.length / 2);
+  for (let i = 0; i < s.length; i += 2) {
+    out[i / 2] = ((s.charCodeAt(i) - 48) << 4) | (s.charCodeAt(i + 1) - 48);
+  }
+  return out;
+}
+
+/**
+ * Run the vendor's full device-init sequence (captured from HiNotes
+ * runtime). The HiDock falls into a truncated "warm" state for
+ * QUERY_FILE_LIST when not properly initialized, returning fewer
+ * entries than it actually has on disk. This sequence puts it in the
+ * state where the file list is complete.
+ *
+ * Each call resets the sequence counter, so every fresh connect starts
+ * from sqidx=1 just like the vendor app.
+ */
+export async function runInitSequence(device: ClaimedDevice): Promise<void> {
+  resetSequence();
+  const opts = { readSize: 4096, timeoutMs: 2000 };
+  await sendCmd(device, CMD_QUERY_DEVICE_INFO, null, opts);
+  await sendCmd(device, CMD_QUERY_DEVICE_TIME, null, opts);
+  await sendCmd(device, CMD_SET_DEVICE_TIME, bcdEncodeNow(), opts);
+  await sendCmd(device, CMD_GET_SETTINGS, null, opts);
+  await sendCmd(device, CMD_GET_RECORDING_QUALITY, null, opts);
+  await sendCmd(device, CMD_READ_CARD_INFO, null, opts);
+  await sendCmd(device, CMD_GET_BATTERY_STATUS, null, opts);
+}
+
 /** List recordings on the device, sorted latest-first. */
 export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[]> {
-  // Single FILE_LIST request. Param 0x0E goes in byte 7 (see protocol.ts).
-  // Experiments to "double-call" or drain-then-call broke the response
-  // entirely on this firmware (returns nothing). The HiDock's file-list
-  // command is one-shot per session-state.
-  const response = await sendCommand(
+  // Uses the v2 sender so the sequence number auto-increments off the
+  // counter the init sequence already advanced. Hard-coding seq=14
+  // (the legacy compat behavior) collides with init's seq=1-7 and
+  // appears to put the device into the truncated-response state.
+  const response = await sendCmd(
     device,
-    CMD_GROUP_SYSTEM,
-    SUBCMD_FILE_LIST,
-    0x0e,
-    0,
+    CMD_QUERY_FILE_LIST,
     null,
     { multiChunk: true, readSize: 32768 }
   );
   if (!response || response.length <= 12) return [];
-  /* eslint-disable no-console */
-  console.log(`[file-list] received ${response.length} bytes from device`);
-  // Hunt for filename-shaped substrings the parser might miss + count
-  // recordings per day so we can compare with the standalone HTML's
-  // panel directly when entries go missing.
-  const text = new TextDecoder('latin1').decode(response.slice(12));
-  const allMatches = text.match(/\d{4}[A-Za-z]{3}\d{2}/g) ?? [];
-  const dayCounts: Record<string, number> = {};
-  for (const m of allMatches) dayCounts[m] = (dayCounts[m] ?? 0) + 1;
-  console.log(
-    `[file-list] raw "YYYYMonDD" substrings in response: ${allMatches.length} ` +
-    `(${Object.keys(dayCounts).length} unique days)`
-  );
-  console.log('[file-list] day counts:', dayCounts);
-  /* eslint-enable no-console */
-  return parseFileListResponse(response);
+
+  // Device fragments the file list across multiple ~4KB chunks, each
+  // prefixed with a 12-byte `12 34 00 04 ...` header. The first one is
+  // the outer response (we slice it off below); the rest get spliced
+  // into the data — including mid-filename for unlucky records that
+  // straddle a chunk boundary. Strip all of them before parsing.
+  const cleanPayload = stripFileListChunkHeaders(response.slice(12));
+  // Re-prepend a 12-byte stub so parseFileListResponse's `.slice(12)`
+  // works the same way as before.
+  const cleaned = new Uint8Array(12 + cleanPayload.length);
+  cleaned.set(cleanPayload, 12);
+  return parseFileListResponse(cleaned);
 }
 
 /**
- * Query storage usage. Some firmware combos drop the first response after a
- * reconnect, so we retry up to 3 times, re-sending STORAGE_INIT each round
- * to flush the IN endpoint. Storage info correctness also seems to gate
- * the FILE_LIST response size, so failing here silently propagates into
- * a smaller-than-expected file list — drain stale bytes before each
- * attempt so the response actually lands in our read window.
+ * Query storage usage. Init already runs READ_CARD_INFO, so this is the
+ * on-demand refresh path (called from the storage panel + before each
+ * List Files). Single sendCmd via the auto-increment counter.
  */
 export async function getStorageInfo(
   device: ClaimedDevice
 ): Promise<StorageCapacity | null> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) await sleep(250);
-    await drainInEndpoint(device, 200);
-    await sendCommand(device, CMD_GROUP_STORAGE, SUBCMD_STORAGE_INIT, 3, 0);
-    const response = await sendCommand(
-      device,
-      CMD_GROUP_SYSTEM,
-      SUBCMD_STORAGE_INFO,
-      3,
-      0
-    );
-    if (!response || response.length < 16) continue;
-    const interp = tryInterpretStorage(response.slice(12));
-    if (interp) return interp;
-    // Got bytes but couldn't interpret — bail rather than spin forever.
-    return null;
-  }
-  return null;
+  const response = await sendCmd(device, CMD_READ_CARD_INFO);
+  if (!response || response.length < 16) return null;
+  return tryInterpretStorage(response.slice(12));
+}
+
+/** Query battery status (charge state + percent + voltage). */
+export async function getBatteryStatus(
+  device: ClaimedDevice
+): Promise<BatteryStatus | null> {
+  const response = await sendCmd(device, CMD_GET_BATTERY_STATUS);
+  if (!response || response.length < 18) return null;
+  return tryInterpretBattery(response.slice(12));
 }
 
 /** Hook for the UI to render speed / ETA while a download is in flight. */

@@ -5,7 +5,7 @@
 // actual work (USB, persistence, DOM mutation) to its dedicated modules.
 
 import { state } from './state.js';
-import { listFiles } from './usb/commands.js';
+import { listFiles, runInitSequence } from './usb/commands.js';
 import {
   closeDevice,
   findPairedDevice,
@@ -17,6 +17,7 @@ import {
   loadFileListCache,
   saveFileListCache
 } from './storage/persistence.js';
+import { fileTimestampKey } from './util/filename.js';
 import {
   applySettings,
   wireSettingsAutosave
@@ -66,10 +67,7 @@ async function loadFileListLive(silent = false): Promise<void> {
   try {
     if (!silent) log('Getting file list…', 'info');
     state.files = [];
-    // Reconcile saved-state with disk before re-rendering rows — covers
-    // the case where the user deleted a file in Finder while the app was
-    // running so the saved badge disappears on the same List Files click
-    // that surfaces the device's recordings.
+
     await refreshSavedFromDisk();
     await refreshStoragePanel();
 
@@ -88,23 +86,18 @@ async function loadFileListLive(silent = false): Promise<void> {
     }));
     log(`Found ${state.files.length} files`, 'success');
 
-    // Sort latest first using the timestamp embedded in the filename.
-    // (parseFileListResponse already returns this order, but re-sorting is
-    // cheap and keeps the contract local.)
-    sortFilesLatestFirst();
+    // Sort newest-first by the chronological timestamp embedded in the
+    // filename. Has to use fileTimestampKey (which maps Mon→MM) — a
+    // raw filename sort would put April after Aug because 'p' < 'u'.
+    state.files.sort((a, b) =>
+      fileTimestampKey(b.name).localeCompare(fileTimestampKey(a.name))
+    );
 
     renderFileList();
     saveFileListCache(state.files);
   } catch (err) {
     log(`Error listing files: ${(err as Error).message}`, 'error');
   }
-}
-
-function sortFilesLatestFirst(): void {
-  // The names embed the timestamp; lexicographic sort on the embedded
-  // YYYYMMDDHHMMSS yields the right order. parsers.ts already does this.
-  // Re-applying here is cheap insurance against future reorderings.
-  state.files.sort((a, b) => b.name.localeCompare(a.name));
 }
 
 function restoreCachedFileList(): boolean {
@@ -136,8 +129,13 @@ async function connectDevice(usbDevice: USBDevice): Promise<void> {
   await openAndClaim(usbDevice);
   setConnectedUi();
   log('Device connected', 'success');
-  // Settle delay — auto-reconnect can leave stale data on the IN endpoint
-  // and racing the device's response queue causes empty file-list reads.
+  try {
+    log('Initializing device…', 'info');
+    await runInitSequence(state.device);
+    log('Device initialized', 'success');
+  } catch (err) {
+    log(`Init sequence failed: ${(err as Error).message} — listing anyway`, 'warning');
+  }
   setTimeout(() => loadFileListLive(), 200);
 }
 
@@ -160,7 +158,16 @@ function wireConnectionButtons(): void {
 }
 
 function wireFileListControls(): void {
-  document.getElementById('listFilesBtn')!.addEventListener('click', () => loadFileListLive());
+  // Mid-session List Files clicks land in a "warm" device state where
+  // the response is truncated by 9 records (the latest, including
+  // April recordings). The HiDock's protocol state machine doesn't
+  // accept a re-init while the session is active, and every other
+  // workaround we tried either broke the response entirely or made
+  // it worse. Reloading the renderer triggers auto-reconnect → fresh
+  // init → reliable 224-record listing. ~250 ms cost.
+  document.getElementById('listFilesBtn')!.addEventListener('click', () => {
+    window.location.reload();
+  });
 
   document.getElementById('selectAllBtn')!.addEventListener('click', () => setVisibleSelected(true));
   document.getElementById('deselectAllBtn')!.addEventListener('click', () => setVisibleSelected(false));
