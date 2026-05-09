@@ -13,7 +13,7 @@ import {
   ParsedFileEntry,
   StorageCapacity,
   parseFileListResponse,
-  stripChunkHeader,
+  stripAllProtocolHeaders,
   tryInterpretStorage
 } from './parsers.js';
 
@@ -126,10 +126,11 @@ export async function downloadFile(
   packet.set(filenameBytes, 12);
   await device.transferOut(HIDOCK_P1_OUT_ENDPOINT, packet as BufferSource);
 
-  // 5. Read chunks. The chunk loop is deliberately resilient:
-  //    - timeouts on chunk 0 fail fast (device didn't respond at all)
-  //    - timeouts after that just count toward the empty-chunks budget
-  //    - external aborts return whatever we've accumulated so far
+  // 5. Read chunks. We accumulate raw device bytes here without trying to
+  //    strip the per-frame protocol header — that gets done in one pass
+  //    over the assembled buffer below. Per-chunk stripping was fragile:
+  //    a single short transferIn read pushed every subsequent chunk's
+  //    header off byte 0 of its view and the magic-byte check missed.
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
   let chunkNumber = 0;
@@ -148,13 +149,6 @@ export async function downloadFile(
         rejectAfter<USBInTransferResult>(timeout)
       ]);
       if (result.data && result.data.byteLength > 0) {
-        // Use byteOffset + byteLength explicitly. `new Uint8Array(buffer)`
-        // would view the entire underlying ArrayBuffer, which in some WebUSB
-        // implementations is larger than the actual transfer payload — that
-        // makes chunk[0..3] read garbage instead of the protocol header
-        // and stripChunkHeader misses every chunk after the first. (.slice()
-        // also copies the bytes off any pooled buffer the implementation
-        // might recycle on the next transfer.)
         chunk = new Uint8Array(
           result.data.buffer,
           result.data.byteOffset,
@@ -177,28 +171,23 @@ export async function downloadFile(
       continue;
     }
 
+    chunks.push(chunk);
+    totalBytes += chunk.length;
     chunkNumber++;
-    const stripped = stripChunkHeader(chunk);
-    if (stripped.length === 0) {
-      consecutiveEmpty++;
-      continue;
-    }
-
-    chunks.push(stripped);
-    totalBytes += stripped.length;
     consecutiveEmpty = 0;
-    options.onProgress?.({ bytesReceived: totalBytes, chunkBytes: stripped.length });
+    options.onProgress?.({ bytesReceived: totalBytes, chunkBytes: chunk.length });
   }
 
   if (totalBytes === 0) throw new Error('No data received');
 
-  const out = new Uint8Array(totalBytes);
+  // Assemble + strip every protocol header in one sweep.
+  const raw = new Uint8Array(totalBytes);
   let offset = 0;
   for (const c of chunks) {
-    out.set(c, offset);
+    raw.set(c, offset);
     offset += c.length;
   }
-  return out;
+  return stripAllProtocolHeaders(raw);
 }
 
 function sleep(ms: number): Promise<void> {

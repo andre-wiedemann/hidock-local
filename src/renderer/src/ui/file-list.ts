@@ -144,9 +144,9 @@ export function renderFileList(metaSuffix?: string): void {
     const transcribeBtn = item.querySelector('.transcribe-btn') as HTMLButtonElement;
     transcribeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      transcribeFile(state.files[index]).catch(() => {
-        // transcribeFile already logs its own errors.
-      });
+      // transcribeFile enqueues + returns immediately; the worker drains
+      // the queue and the transcript panel surfaces results.
+      transcribeFile(state.files[index]);
     });
 
     const downloadBtn = item.querySelector('.download-btn') as HTMLButtonElement;

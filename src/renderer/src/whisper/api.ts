@@ -11,6 +11,7 @@ interface FsApi {
   writeFile(dirPath: string, fileName: string, bytes: ArrayBuffer): Promise<void>;
   pathExists(path: string): Promise<boolean>;
   listDir(dirPath: string): Promise<string[]>;
+  readTextFile(path: string): Promise<string>;
 }
 
 interface HidockGlobal {

@@ -15,7 +15,7 @@
 
 import { BrowserWindow, dialog, ipcMain } from 'electron';
 import { existsSync, statSync } from 'node:fs';
-import { mkdir, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 interface ChooseDirArgs {
@@ -70,5 +70,10 @@ export function registerFileIpc(): void {
     if (!dirPath || !existsSync(dirPath)) return [];
     const entries = await readdir(dirPath, { withFileTypes: true });
     return entries.filter((e) => e.isFile()).map((e) => e.name);
+  });
+
+  ipcMain.handle('fs:read-text-file', async (_event, path: string): Promise<string> => {
+    if (!path || !existsSync(path)) return '';
+    return readFile(path, 'utf-8');
   });
 }

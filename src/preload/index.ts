@@ -66,6 +66,10 @@ const fsApi = {
   /** List file entries (not directories) directly under `dirPath`. */
   listDir(dirPath: string): Promise<string[]> {
     return ipcRenderer.invoke('fs:list-dir', dirPath);
+  },
+  /** Read a UTF-8 text file. Returns "" if the file doesn't exist. */
+  readTextFile(path: string): Promise<string> {
+    return ipcRenderer.invoke('fs:read-text-file', path);
   }
 };
 

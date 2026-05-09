@@ -299,6 +299,15 @@ export async function init(): Promise<void> {
     storageKey: 'hidock:config:panelCollapsed',
     defaultCollapsed: false
   });
+  // Transcript panel — hidden until the first transcription, then
+  // collapsible. Default expanded so the user immediately sees the
+  // result; persists their choice afterward.
+  wireCollapsible({
+    panelId: 'transcriptPanel',
+    headerId: 'transcriptPanelHeader',
+    storageKey: 'hidock:transcript:panelCollapsed',
+    defaultCollapsed: false
+  });
 
   // Cached list shows immediately, even pre-connect.
   restoreCachedFileList();

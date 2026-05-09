@@ -1,10 +1,16 @@
-// One-shot transcribe orchestration: takes a recording file the user has
-// already downloaded, resolves its path on disk, runs whisper.cpp via IPC,
-// and emits status into the transfer panel + debug log.
+// Single-worker transcription queue. Both manual (per-row T button) and
+// auto (after-download trigger) requests land in the same queue, run one
+// at a time, and update the transcript panel + transfer panel as they go.
 //
-// Entry points:
-//   transcribeFile(file)         — user-triggered (per-row T button)
-//   maybeAutoTranscribe(file)    — fire-and-forget after a download finishes
+// Why a single worker:
+//   - whisper-cli holds the model in RAM (~100MB-3GB depending on model).
+//     Running two in parallel doubles RAM and contends for GPU/CPU; on
+//     consumer hardware this thrashes hard.
+//   - The user sees one transcription at a time progress in the panel,
+//     so the in-app feedback maps to one process.
+//
+// The queue is renderer-side, not main-side. The main process happily
+// runs whatever IPC requests come in; we serialize at the renderer layer.
 
 import { state, RecordingFile } from '../state.js';
 import { applyExtensionPreference } from '../util/filename.js';
@@ -17,9 +23,10 @@ import {
   showTransferPanel,
   updateProgress
 } from '../ui/transfer.js';
-import { TranscribeFormat } from '../../../shared/whisper.js';
+import { TranscribeFormat, TranscribeResult } from '../../../shared/whisper.js';
 import { whisperApi } from './api.js';
 import { getPrefs } from './store.js';
+import { setTranscriptResult, setTranscriptStatus } from './transcript-panel.js';
 
 let activeRequestId: string | null = null;
 let progressUnsub: (() => void) | null = null;
@@ -51,8 +58,6 @@ function selectedFormats(): TranscribeFormat[] {
 
 /** Path separator that works for the platforms we ship to. */
 function joinPath(dir: string, name: string): string {
-  // The renderer doesn't have access to node:path, but '/' works on macOS
-  // and Linux, and Node on Windows accepts mixed separators.
   return dir.endsWith('/') || dir.endsWith('\\') ? `${dir}${name}` : `${dir}/${name}`;
 }
 
@@ -69,13 +74,10 @@ async function resolveAudioPath(file: RecordingFile): Promise<string | null> {
 }
 
 function basePathFor(audioPath: string): string {
-  // Strip the audio extension; whisper-cli will append .txt / .vtt / .json.
   return audioPath.replace(/\.(mp3|hda|wav|m4a|flac|ogg)$/i, '');
 }
 
 function ensureProgressSubscription(requestId: string): void {
-  // Subscribe lazily and only once per call. We keep the unsubscribe handle
-  // so we can drop it when the transcribe promise settles.
   progressUnsub?.();
   progressUnsub = whisperApi().onProgress((p) => {
     if (p.requestId !== requestId) return;
@@ -83,20 +85,101 @@ function ensureProgressSubscription(requestId: string): void {
   });
 }
 
+function generateRequestId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `req-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export interface TranscribeOptions {
-  /** When true, log + UI updates are quiet (used by auto-transcribe path). */
+  /** When true, log + transfer-panel updates are quiet (auto-transcribe path). */
   quiet?: boolean;
 }
 
+// ─── Queue ───────────────────────────────────────────────────────────────
+
+interface QueueEntry {
+  file: RecordingFile;
+  opts: TranscribeOptions;
+}
+
+const queue: QueueEntry[] = [];
+let workerRunning = false;
+
+function pendingCount(): number {
+  return queue.length + (workerRunning ? 1 : 0);
+}
+
+function describeQueue(): string {
+  const total = pendingCount();
+  if (total === 0) return '';
+  if (total === 1) return '1 active';
+  return `${queue.length} queued · 1 running`;
+}
+
+async function runWorker(): Promise<void> {
+  if (workerRunning) return;
+  workerRunning = true;
+  try {
+    while (queue.length > 0) {
+      const next = queue.shift();
+      if (!next) break;
+      try {
+        await runTranscribe(next.file, next.opts);
+      } catch (err) {
+        log(`Transcribe error: ${(err as Error).message}`, 'error');
+      }
+    }
+  } finally {
+    workerRunning = false;
+    setTranscriptStatus('');
+  }
+}
+
 /**
- * Run whisper on a single recording file. Throws on user-facing problems
- * (no model, no dirHandle, file not downloaded) so callers can decide how
- * to surface them.
+ * Public entry point. Enqueues a transcription request — runs immediately
+ * if the queue is empty, otherwise waits its turn behind any in-flight or
+ * already-queued request.
  */
-export async function transcribeFile(
+export function transcribeFile(file: RecordingFile, opts: TranscribeOptions = {}): void {
+  queue.push({ file, opts });
+  if (workerRunning) {
+    log(`Queued for transcription: ${file.name} (${describeQueue()})`, 'info');
+    setTranscriptStatus(describeQueue());
+  }
+  runWorker();
+}
+
+/**
+ * Enqueue an auto-transcribe (post-download). Quiet by default — transfer
+ * panel stays focused on downloads, only the debug log + transcript panel
+ * reflect the work.
+ */
+export function maybeAutoTranscribe(
   file: RecordingFile,
-  opts: TranscribeOptions = {}
-): Promise<void> {
+  opts: TranscribeOptions = { quiet: true }
+): void {
+  const prefs = getPrefs();
+  if (!prefs.autoTranscribe) return;
+  if (!prefs.defaultModel) return;
+  if (!state.dirPath) return;
+  transcribeFile(file, opts);
+}
+
+export function isTranscribing(): boolean {
+  return workerRunning || queue.length > 0;
+}
+
+/** Cancel the in-flight transcription; queued items past it remain queued. */
+export async function cancelTranscribe(): Promise<void> {
+  if (!activeRequestId) return;
+  await whisperApi().cancel(activeRequestId);
+}
+
+// ─── Inner: actually run one transcription ──────────────────────────────
+
+async function runTranscribe(file: RecordingFile, opts: TranscribeOptions): Promise<void> {
   const prefs = getPrefs();
   if (!prefs.defaultModel) {
     log('No default model — pick one in the Transcription panel.', 'warning');
@@ -112,15 +195,7 @@ export async function transcribeFile(
     return;
   }
 
-  if (activeRequestId) {
-    log('A transcription is already running. Wait for it to finish.', 'warning');
-    return;
-  }
-
-  const requestId =
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? crypto.randomUUID()
-      : `req-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const requestId = generateRequestId();
   activeRequestId = requestId;
 
   try {
@@ -129,10 +204,7 @@ export async function transcribeFile(
     let audioPath = await resolveAudioPath(file);
     if (!audioPath) {
       if (!state.device) {
-        log(
-          `${saveName} isn't downloaded yet and the device isn't connected.`,
-          'error'
-        );
+        log(`${saveName} isn't downloaded yet and the device isn't connected.`, 'error');
         return;
       }
       log(`${saveName} not on disk — downloading first…`, 'info');
@@ -144,7 +216,7 @@ export async function transcribeFile(
       }
     }
 
-    // Step 2: kick off transcription with progress wiring.
+    // Step 2: transcribe with progress wiring.
     if (!opts.quiet) {
       showTransferPanel();
       setSpeedDisplay(0);
@@ -152,27 +224,36 @@ export async function transcribeFile(
       updateProgress(0, 1, `Transcribing: ${file.name}`);
     }
     setTranscribeProgress('preparing', 0);
+    setTranscriptStatus(describeQueue());
     ensureProgressSubscription(requestId);
 
     if (!opts.quiet) log(`Transcribing ${file.name}…`, 'info');
 
-    const result = await whisperApi().transcribe({
-      requestId,
-      audioPath,
-      modelName: prefs.defaultModel,
-      formats,
-      basePath: basePathFor(audioPath),
-      language: prefs.language || undefined
-    });
+    let result: TranscribeResult;
+    try {
+      result = await whisperApi().transcribe({
+        requestId,
+        audioPath,
+        modelName: prefs.defaultModel,
+        formats,
+        basePath: basePathFor(audioPath),
+        language: prefs.language || undefined
+      });
+    } catch (err) {
+      const e = err as { code?: string; message: string };
+      log(`✗ Transcribe failed: ${e.message ?? 'unknown error'}`, 'error');
+      return;
+    }
+
     const wrote = Object.keys(result.outputs).join(', ') || 'no files';
     log(
       `✓ Transcribed ${file.name} in ${result.durationSec.toFixed(1)}s · wrote ${wrote}`,
       'success'
     );
     setTranscribeProgress('finalizing', 100);
-  } catch (err) {
-    const e = err as { code?: string; message: string };
-    log(`✗ Transcribe failed: ${e.message ?? 'unknown error'}`, 'error');
+
+    // Step 3: load the transcript into the in-app panel.
+    await setTranscriptResult(file, result);
   } finally {
     progressUnsub?.();
     progressUnsub = null;
@@ -182,61 +263,4 @@ export async function transcribeFile(
       updateProgress(1, 1, 'Done');
     }
   }
-}
-
-export function isTranscribing(): boolean {
-  return activeRequestId !== null;
-}
-
-/** Cancel the in-flight transcription, if any. */
-export async function cancelTranscribe(): Promise<void> {
-  if (!activeRequestId) return;
-  await whisperApi().cancel(activeRequestId);
-}
-
-// ─── Auto-transcribe queue ───────────────────────────────────────────
-// Serializes auto-triggered transcribes so a multi-file batch download
-// doesn't fan out into N parallel whisper processes (which would blow up
-// RAM and GPU usage). Manual transcribes from the per-row button still go
-// through transcribeFile() directly.
-
-interface QueueEntry {
-  file: RecordingFile;
-  opts: TranscribeOptions;
-}
-
-const queue: QueueEntry[] = [];
-let workerRunning = false;
-
-async function runWorker(): Promise<void> {
-  if (workerRunning) return;
-  workerRunning = true;
-  try {
-    while (queue.length) {
-      const next = queue.shift();
-      if (!next) break;
-      await transcribeFile(next.file, next.opts).catch((err) => {
-        log(`Auto-transcribe error: ${(err as Error).message}`, 'error');
-      });
-    }
-  } finally {
-    workerRunning = false;
-  }
-}
-
-/**
- * Enqueue a fire-and-forget transcription for the download path. Quiet by
- * default — the transfer panel stays focused on downloads, and successful
- * transcriptions only show in the debug log.
- */
-export function maybeAutoTranscribe(
-  file: RecordingFile,
-  opts: TranscribeOptions = { quiet: true }
-): void {
-  const prefs = getPrefs();
-  if (!prefs.autoTranscribe) return;
-  if (!prefs.defaultModel) return;
-  if (!state.dirPath) return;
-  queue.push({ file, opts });
-  runWorker();
 }

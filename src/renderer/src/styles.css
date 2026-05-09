@@ -937,6 +937,43 @@ input[type="checkbox"]:focus-visible {
   white-space: nowrap;
 }
 
+/* ─── Transcript panel ─────────────────────────── */
+.transcript-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+.transcript-filename {
+  color: var(--text);
+  font-weight: 500;
+  word-break: break-all;
+}
+.transcript-detail {
+  color: var(--text-muted);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 9.5px;
+  font-weight: 600;
+  align-self: center;
+}
+.transcript-text {
+  font-family: 'Instrument Sans', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  padding: 18px 22px;
+  max-height: 360px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
 /* ─── Log ─────────────────────────────────────────── */
 .log-toggle-row {
   display: flex;
