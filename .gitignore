@@ -34,3 +34,7 @@ coverage/
 
 # Electron-builder cache
 .cache-loader/
+
+# Whisper.cpp binaries — fetched per platform via `npm run whisper:fetch`.
+# CI runners build their own; nothing here is committed.
+resources/whisper/

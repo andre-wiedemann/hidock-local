@@ -36,9 +36,11 @@
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "icons": "node tools/build-icons.mjs"
+    "icons": "node tools/build-icons.mjs",
+    "whisper:fetch": "node tools/fetch-whisper.mjs"
   },
   "dependencies": {
+    "ffmpeg-static": "^5.3.0",
     "jszip": "^3.10.1"
   },
   "devDependencies": {
