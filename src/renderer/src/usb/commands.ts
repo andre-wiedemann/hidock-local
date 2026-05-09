@@ -32,8 +32,23 @@ export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[
     { multiChunk: true, readSize: 131072 }
   );
   if (!response || response.length <= 12) return [];
-  // eslint-disable-next-line no-console
+  /* eslint-disable no-console */
   console.log(`[file-list] received ${response.length} bytes from device`);
+  // Hunt for filename-shaped substrings the parser might miss. If the
+  // user reports 12 missing recordings while we say "Found 214", and
+  // this scan finds 226, the regex is dropping them silently. If this
+  // scan also says 214, the device truly isn't returning them.
+  const text = new TextDecoder('latin1').decode(response.slice(12));
+  const allMatches = text.match(/\d{4}[A-Za-z]{3}\d{2}/g) ?? [];
+  const uniqueDays = new Set(allMatches);
+  console.log(
+    `[file-list] raw "YYYYMonDD" substrings in response: ${allMatches.length} ` +
+    `(${uniqueDays.size} unique days)`
+  );
+  // Print every distinct day prefix sorted descending — easy to scan
+  // for missing March 29 entries.
+  console.log('[file-list] distinct days:', [...uniqueDays].sort().reverse().slice(0, 20));
+  /* eslint-enable no-console */
   return parseFileListResponse(response);
 }
 

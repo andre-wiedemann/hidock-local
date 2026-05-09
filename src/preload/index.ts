@@ -70,6 +70,10 @@ const fsApi = {
   /** Read a UTF-8 text file. Returns "" if the file doesn't exist. */
   readTextFile(path: string): Promise<string> {
     return ipcRenderer.invoke('fs:read-text-file', path);
+  },
+  /** Read a file as raw bytes. Returns null if the file doesn't exist. */
+  readBinaryFile(path: string): Promise<ArrayBuffer | null> {
+    return ipcRenderer.invoke('fs:read-binary-file', path);
   }
 };
 

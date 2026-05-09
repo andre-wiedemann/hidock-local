@@ -12,6 +12,7 @@ interface FsApi {
   pathExists(path: string): Promise<boolean>;
   listDir(dirPath: string): Promise<string[]>;
   readTextFile(path: string): Promise<string>;
+  readBinaryFile(path: string): Promise<ArrayBuffer | null>;
 }
 
 interface HidockGlobal {

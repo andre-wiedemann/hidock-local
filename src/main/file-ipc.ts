@@ -76,4 +76,12 @@ export function registerFileIpc(): void {
     if (!path || !existsSync(path)) return '';
     return readFile(path, 'utf-8');
   });
+
+  ipcMain.handle('fs:read-binary-file', async (_event, path: string): Promise<ArrayBuffer | null> => {
+    if (!path || !existsSync(path)) return null;
+    const buf = await readFile(path);
+    // Return a fresh ArrayBuffer slice so structured-clone has clean
+    // ownership across the IPC boundary.
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  });
 }
