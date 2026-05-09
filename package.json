@@ -35,7 +35,8 @@
     "package:linux": "electron-vite build && electron-builder --linux",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "icons": "node tools/build-icons.mjs"
   },
   "dependencies": {
     "jszip": "^3.10.1"
@@ -46,6 +47,8 @@
     "electron": "^33.0.0",
     "electron-builder": "^25.0.5",
     "electron-vite": "^2.3.0",
+    "png-to-ico": "^2.1.8",
+    "sharp": "^0.33.5",
     "typescript": "^5.6.0",
     "vite": "^5.4.0",
     "vitest": "^2.1.0"

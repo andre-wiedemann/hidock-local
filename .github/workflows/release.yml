@@ -1,0 +1,117 @@
+name: Release
+
+# Tag-triggered build that produces unsigned binaries for macOS, Windows and
+# Linux and uploads them to a GitHub Release.
+#
+# Usage:
+#   git tag v0.1.0
+#   git push origin v0.1.0
+#
+# The release is created in draft mode so you can verify the artifacts and
+# write release notes before publishing.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (must already exist on the repo)'
+        required: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact-glob: 'release/**/*.dmg'
+            build-cmd: 'npm run package:mac'
+          - os: windows-latest
+            artifact-glob: 'release/**/*.exe'
+            build-cmd: 'npm run package:win'
+          - os: ubuntu-latest
+            artifact-glob: 'release/**/*.AppImage'
+            build-cmd: 'npm run package:linux'
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build app
+        run: ${{ matrix.build-cmd }}
+        env:
+          # Explicitly empty — we ship unsigned in v0.1.0. Set these as
+          # GitHub secrets to enable signing later.
+          CSC_LINK: ''
+          CSC_KEY_PASSWORD: ''
+          # Disable electron-builder's auto-publish; we do it ourselves below.
+          GH_TOKEN: ''
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-binaries
+          path: ${{ matrix.artifact-glob }}
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "name=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: List artifacts
+        run: find dist -type f -printf '%P  %s bytes\n' | sort
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: ${{ steps.tag.outputs.name }}
+          draft: true
+          generate_release_notes: true
+          body: |
+            **Unsigned binaries.** First launch shows a security warning on
+            macOS and Windows. See the README for the override steps —
+            "Installing the unsigned binary".
+
+            Built from commit `${{ github.sha }}`.
+          files: |
+            dist/**/*.dmg
+            dist/**/*.exe
+            dist/**/*.AppImage

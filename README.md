@@ -43,7 +43,37 @@ You need:
 
 ### Pre-built binaries
 
-Not yet — see [Roadmap](#roadmap).
+Each tagged release publishes unsigned binaries for all three platforms — see the [Releases page](https://github.com/andre-wiedemann/hidock-local/releases).
+
+| Platform   | Artifact            |
+|------------|---------------------|
+| macOS      | `HiDock-Local-x.y.z.dmg` (Intel + Apple Silicon) |
+| Windows    | `HiDock-Local-Setup-x.y.z.exe` |
+| Linux      | `HiDock-Local-x.y.z.AppImage` |
+
+#### Installing the unsigned binary
+
+Because the project doesn't have an Apple Developer or Windows code-signing cert, your OS will warn on first launch. The binaries are safe — the build pipeline runs entirely on GitHub Actions and you can audit the source it built from. Override steps:
+
+**macOS** — open the `.dmg`, drag HiDock Local into Applications. The first time you launch it:
+1. Right-click (or Ctrl-click) the app icon → **Open**
+2. Click **Open** in the "unidentified developer" prompt
+3. macOS remembers the choice; subsequent launches are normal
+
+If macOS still refuses (Apple Silicon, recent Sequoia versions), run once from a terminal to clear the quarantine attribute:
+```bash
+xattr -cr /Applications/HiDock\ Local.app
+```
+
+**Windows** — run the installer. SmartScreen will show "Windows protected your PC":
+1. Click **More info**
+2. Click **Run anyway**
+
+**Linux** — make the AppImage executable and run it:
+```bash
+chmod +x HiDock-Local-*.AppImage
+./HiDock-Local-*.AppImage
+```
 
 ## Quickstart
 
@@ -86,8 +116,8 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for a walk-through of the mod
 
 The shape of the next few things to land:
 
-- Pre-built binaries for macOS / Windows / Linux
-- App icon (currently a placeholder)
+- Code signing + notarization once an Apple Developer cert is available (removes the first-launch warning on macOS)
+- A nicer app icon (current one is a placeholder slash mark)
 - Optional automatic transcription via local Whisper.cpp (off by default)
 - Possibly support for the HiDock H1 if anyone with one wants to test
 
