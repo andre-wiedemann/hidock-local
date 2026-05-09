@@ -134,29 +134,34 @@ async function readMultipleChunks(
   const MAX_ATTEMPTS = 32;
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (totalBytes >= readSize) break;
+    const remaining = Math.min(readSize - totalBytes, 16384);
     try {
-      const remaining = Math.min(readSize - totalBytes, 16384);
+      // First read gets a longer window because the device may take a
+      // beat to assemble the response. Subsequent reads use 3s — the
+      // older 1s budget would cut off mid-list when the device's flash
+      // scan paused, dropping tail entries silently.
       const result = await raceTimeout(
         device.transferIn(HIDOCK_P1_IN_ENDPOINT, remaining),
-        attempt === 0 ? 5000 : 1000
+        attempt === 0 ? 5000 : 3000
       );
 
-      if (result.data && result.data.byteLength > 0) {
-        const chunk = new Uint8Array(
-          result.data.buffer,
-          result.data.byteOffset,
-          result.data.byteLength
-        ).slice();
-        chunks.push(chunk);
-        totalBytes += chunk.length;
+      if (!result.data || result.data.byteLength === 0) break;
 
-        // Short read or full quota reached → we're done.
-        if (chunk.length < 512) break;
-        if (totalBytes >= readSize) break;
-      } else {
-        break;
-      }
+      const chunk = new Uint8Array(
+        result.data.buffer,
+        result.data.byteOffset,
+        result.data.byteLength
+      ).slice();
+      chunks.push(chunk);
+      totalBytes += chunk.length;
+
+      // Don't break on short reads — the device sometimes fragments the
+      // response into <512-byte trailing pieces while there's still data
+      // queued up. Rely on timeouts and the empty-data branch above to
+      // detect the actual end of the response.
     } catch {
+      // Timeout — treat as end-of-response.
       break;
     }
   }

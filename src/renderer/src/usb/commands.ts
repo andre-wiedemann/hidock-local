@@ -32,6 +32,8 @@ export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[
     { multiChunk: true, readSize: 131072 }
   );
   if (!response || response.length <= 12) return [];
+  // eslint-disable-next-line no-console
+  console.log(`[file-list] received ${response.length} bytes from device`);
   return parseFileListResponse(response);
 }
 
