@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-05-09
+
+### Fixed
+- **File list now returns the device's complete inventory (224 entries on the test device).** Reverse-engineered the missing pieces from the vendor app's JS bundle:
+  - The packet header at bytes 2–3 is a 16-bit BE command code, not separate `cmd1`/`cmd2` fields. Bytes 4–7 are an auto-incrementing 32-bit BE sequence index, not a "param region". Bytes 8–11 are a 32-bit BE body length.
+  - Replaced the partial init (just `STORAGE_INIT` + `STORAGE_INFO`) with the vendor's full 7-command sequence: `QUERY_DEVICE_INFO → QUERY_DEVICE_TIME → SET_DEVICE_TIME → GET_SETTINGS → GET_RECORDING_QUALITY → READ_CARD_INFO → GET_BATTERY_STATUS`. `SET_DEVICE_TIME` carries a real BCD-encoded host clock body.
+  - Added the missing `device.selectAlternateInterface(0, 0)` call after `claimInterface(0)`. Without it the device silently ignored every init command.
+  - Added a chunk-header strip step for the FILE_LIST response — the device fragments the list across ~4 KB chunks each prefixed with a 12-byte protocol header, and one of those headers was getting spliced into a filename mid-record.
+- **Storage info now reads the correct values.** Old parser used a wrong byte layout (LE 2-KiB blocks anchored on a "HIDOCK" magic), reporting 1.13 GB of 64 GB while the file selection counter said 6.06 GB. Vendor format is BE MiB at offsets 0+4 of the body, with `used = capacity - free`. Now displays `6.06 GB / 58.25 GB · 10% used`, matching reality.
+- **Sort order**: file list is now sorted newest-first using `fileTimestampKey` (which maps `Apr/Aug/Jan` → `04/08/01`). Earlier code did a raw filename compare, which puts April after August because `'p' < 'u'` — pushing April recordings deep into the list where users couldn't find them.
+- File-list reload race: per-row buttons now bail safely on `state.files[index] === undefined`, preventing the `Cannot read properties of undefined (reading 'name')` crash that fired when clicking during a List Files refresh.
+
+### Added
+- **Battery panel** showing charge state, percent, and voltage (e.g. `🔋 100% · 4.20V · full`). Vendor parser ported byte-for-byte: status code at body[0], percent at body[1], microvolts BE uint32 at body[2..5].
+- `docs/PROTOCOL_RE_NOTES.md` documenting the corrected packet format and the full vendor command code table (45 commands).
+
+### Changed
+- **List Files button now reloads the renderer** (full app refresh). The HiDock's protocol state machine doesn't accept a re-init mid-session, so subsequent file-list calls drop into a "warm state" that returns 9 fewer entries (the latest, including current-month recordings). Reload triggers auto-reconnect → fresh init → reliable 224-record listing in ~250 ms.
+- `tryInterpretStorage` parser simplified: no more multi-offset/multi-unit heuristic fallback. The vendor format is canonical; if the bytes don't match it, return null.
+
 ## [0.2.0] — 2026-05-09
 
 ### Added

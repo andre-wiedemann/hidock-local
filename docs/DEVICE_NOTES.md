@@ -53,60 +53,34 @@ For a 64 GB device:
 - Total blocks = 33,554,432
 - Total bytes = 33,554,432 × 2048 = 68,719,476,736 = 64 GiB exactly
 
-## File-list quirk: truncated tail
+## File-list state-machine quirk
 
-The HiDock's file-list command (`0x00 0x04`, `param=0x0E`) does not always
-return the device's full inventory in one call. We've observed three
-distinct counts against the same physical recordings:
+The HiDock's file-list command only returns the full inventory if the
+device is in a "fresh" state — meaning we just opened the USB
+interface and ran the vendor's full init sequence. Once a session has
+been active for a while (file-list issued, storage queried, etc.) the
+device drifts into a "warm" state where the response truncates by 9
+records. The truncated entries are the most recent recordings —
+exactly the ones a user typically wants to see.
 
-- **Vendor app (HiNotes)**: 224 entries
-- **Standalone HTML** (`open-notes/.../batch-download-multi-zip.html`): 223
-  entries on the first call after page load, 214 on every subsequent
-  call within the same session
-- **HiDock Local (this app)**: 214 entries consistently
+This app handles it by:
 
-The correlation that reproduces every time:
-- When `STORAGE_INFO` (`0x00 0x10`, `param=3`) returns valid bytes, the
-  next `FILE_LIST` returns the longer (223+) list.
-- When `STORAGE_INFO` times out, `FILE_LIST` returns 214.
+1. Running the vendor's full 7-command init right after `claimInterface`
+   (see `runInitSequence` in `src/renderer/src/usb/commands.ts`). The
+   key step is `device.selectAlternateInterface(0, 0)` — without it
+   every init command silently times out.
+2. Wiring **List Files** to a renderer reload (`window.location.reload`).
+   That triggers auto-reconnect, which re-runs init, which lands in the
+   fresh state → reliable full inventory.
 
-The vendor app sidesteps this by issuing a longer init sequence before
-ever asking for the file list — observed in their devtools log:
+The reload takes ~250 ms — barely perceptible — and is the simplest
+working solution. Mid-session re-init was tried and rejected by the
+device (the post-claim handshake is one-shot per session).
 
-```
-get-time           → "2026-05-09 17:31:53"
-set-time-to        → host clock
-get-settings       → autoRecord/autoPlay/...
-get-recording-quality
-get-card-info      → free/used/capacity (their version of STORAGE_INFO)
-battery-status
-... more init commands ...
-file-list          → count: 224, time: 98ms
-```
-
-We don't currently have the byte-level decoding for `get-time`,
-`set-time-to`, `get-settings`, etc., so we can't replicate the full
-init. Experiments to coax the device into the "long-list" state from
-the renderer side (drain the IN endpoint, USB reset, double-call,
-re-order command sequences, swap `readSize`) all either had no effect
-or made things worse — the device's protocol state machine is brittle
-and breaks on any divergence from "claim → STORAGE_INIT/INFO → FILE_LIST".
-
-### Workaround
-
-If you notice missing recordings (the day groups in the file list
-don't match what's on the device's own screen), unplug the HiDock for
-~5 seconds and plug it back in. The first `FILE_LIST` after a fresh
-USB enumeration is more likely to land in the "long-list" state and
-return everything.
-
-If that doesn't help, opening the standalone HTML in Chrome
-(`python3 -m http.server` then load the page) and clicking List Files
-once will pull the full list there — those recordings can be
-downloaded from the standalone in the meantime.
-
-A proper fix requires reverse-engineering the missing init commands
-the vendor app uses. Tracked separately on the protocol-re branch.
+If you ever see fewer recordings than your device's own screen reports,
+click List Files (i.e. reload). If the count is still off, unplug for
+~5 s and replug. See `docs/PROTOCOL_RE_NOTES.md` for the byte-level
+investigation.
 
 ## Recording behavior
 
