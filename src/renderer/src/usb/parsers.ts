@@ -77,93 +77,73 @@ export interface StorageCapacity {
   label: string;
 }
 
+/** Battery status — port of HiNotes' parser (status / battery / voltage). */
+export interface BatteryStatus {
+  status: 'idle' | 'charging' | 'full';
+  /** Battery percentage 0-100. */
+  percent: number;
+  /** Voltage in microvolts. Divide by 1_000_000 for volts. */
+  voltageMicroV: number;
+}
+
+/**
+ * Parse a 6-byte GET_BATTERY_STATUS response body.
+ *   [0]    status code (0=idle, 1=charging, else=full)
+ *   [1]    battery percent (0-100)
+ *   [2..5] voltage microvolts (BE uint32)
+ */
+export function tryInterpretBattery(payload: Uint8Array): BatteryStatus | null {
+  if (!payload || payload.length < 6) return null;
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.length);
+  const code = payload[0];
+  const percent = payload[1];
+  const voltage = dv.getUint32(2, /* littleEndian= */ false);
+  if (percent > 100) return null;
+  return {
+    status: code === 0 ? 'idle' : code === 1 ? 'charging' : 'full',
+    percent,
+    voltageMicroV: voltage
+  };
+}
+
 /** Plausible storage range: 100 MB to 256 GB. Outside this is a parse error. */
 const STORAGE_MIN_BYTES = 100 * 1024 * 1024;
 const STORAGE_MAX_BYTES = 256 * 1024 * 1024 * 1024;
 
 /**
- * Interpret the storage-info response payload (after the 12-byte protocol
- * header has been stripped).
+ * Interpret the storage-info (READ_CARD_INFO) response payload.
  *
- * Primary format (anchored on the ASCII "HIDOCK" magic at offset 16):
- *   [0..3]   firmware metadata
- *   [4..7]   firmware metadata
- *   [8..11]  used blocks  (LE uint32) — multiply by 2048 for bytes
- *   [12..15] total blocks (LE uint32) — multiply by 2048 for bytes
- *   [16..21] ASCII "HIDOCK"
- *   [22..27] padding
+ * Reverse-engineered from HiNotes' parser:
+ *   [0..3]   free MiB     (BE uint32)
+ *   [4..7]   capacity MiB (BE uint32)
+ *   [8..11]  status       (BE uint32 → ASCII "900")
+ *   used = capacity - free
  *
- * Block size is 2048, not 512: total_blocks × 2048 yields exactly 64 GiB on
- * a 64 GB device, confirmed against André's hardware.
- *
- * Falls back to a multi-offset/multi-unit heuristic if the magic isn't
- * present — useful for older firmware variants.
+ * Falls back to a multi-offset/multi-unit heuristic for older firmware
+ * variants whose response shape doesn't match.
  */
 export function tryInterpretStorage(payload: Uint8Array): StorageCapacity | null {
-  if (!payload || payload.length < 16) return null;
+  if (!payload || payload.length < 8) return null;
   const dv = new DataView(payload.buffer, payload.byteOffset, payload.length);
 
-  // Primary path: HIDOCK-anchored.
-  if (payload.length >= 22) {
-    const magic = String.fromCharCode(
-      payload[16], payload[17], payload[18],
-      payload[19], payload[20], payload[21]
-    );
-    if (magic === 'HIDOCK') {
-      const BLOCK = 2048;
-      const usedBlocks = dv.getUint32(8, true);
-      const totalBlocks = dv.getUint32(12, true);
-      const usedBytes = usedBlocks * BLOCK;
-      const totalBytes = totalBlocks * BLOCK;
-      if (
-        totalBytes >= STORAGE_MIN_BYTES &&
-        totalBytes <= STORAGE_MAX_BYTES &&
-        usedBytes <= totalBytes
-      ) {
-        return {
-          usedBytes,
-          totalBytes,
-          label: '[8,12] × 2048 (HIDOCK magic)'
-        };
-      }
-    }
+  // Vendor's BE-MiB layout. Multiply by 1024² for bytes.
+  const MIB = 1024 * 1024;
+  const freeMib = dv.getUint32(0, /* littleEndian= */ false);
+  const capacityMib = dv.getUint32(4, false);
+  const totalBytesIfValid = capacityMib * MIB;
+  if (
+    totalBytesIfValid >= STORAGE_MIN_BYTES &&
+    totalBytesIfValid <= STORAGE_MAX_BYTES &&
+    freeMib <= capacityMib
+  ) {
+    const usedBytes = (capacityMib - freeMib) * MIB;
+    return {
+      usedBytes,
+      totalBytes: totalBytesIfValid,
+      label: '[0,4] BE MiB (vendor format)'
+    };
   }
-
-  // Fallback heuristic — try plausible offset/unit combinations and pick
-  // the smallest unit that yields a sensible total.
-  const pairOffsets: ReadonlyArray<[number, number]> = [[0, 4], [4, 8], [8, 12], [12, 16]];
-  const unitMultipliers: ReadonlyArray<{ mult: number; label: string }> = [
-    { mult: 1, label: 'B' },
-    { mult: 512, label: 'sec' },
-    { mult: 1024, label: 'KB' },
-    { mult: 4096, label: '4K' },
-    { mult: 1024 * 1024, label: 'MB' }
-  ];
-  const candidates: Array<StorageCapacity & { mult: number }> = [];
-  for (const [a, b] of pairOffsets) {
-    if (b + 4 > payload.length) continue;
-    const v1 = dv.getUint32(a, true);
-    const v2 = dv.getUint32(b, true);
-    if (v1 === 0 && v2 === 0) continue;
-    for (const { mult, label } of unitMultipliers) {
-      const total = Math.max(v1, v2) * mult;
-      const used = Math.min(v1, v2) * mult;
-      if (
-        total >= STORAGE_MIN_BYTES &&
-        total <= STORAGE_MAX_BYTES &&
-        used <= total
-      ) {
-        candidates.push({
-          usedBytes: used,
-          totalBytes: total,
-          mult,
-          label: `[${a},${b}] in ${label}`
-        });
-      }
-    }
-  }
-  candidates.sort((a, b) => a.mult - b.mult || b.totalBytes - a.totalBytes);
-  return candidates[0] ?? null;
+  return null;
 }
 
 /**

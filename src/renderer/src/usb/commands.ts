@@ -15,11 +15,13 @@ import {
   sendCmd
 } from './protocol.js';
 import {
+  BatteryStatus,
   ParsedFileEntry,
   StorageCapacity,
   parseFileListResponse,
   stripAllProtocolHeaders,
   stripFileListChunkHeaders,
+  tryInterpretBattery,
   tryInterpretStorage
 } from './parsers.js';
 
@@ -138,9 +140,7 @@ export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[
 /**
  * Query storage usage. Init already runs READ_CARD_INFO, so this is the
  * on-demand refresh path (called from the storage panel + before each
- * List Files). Single sendCmd via the auto-increment counter — the
- * legacy retry/drain dance was working around the sequence-collision
- * issue we now sidestep at the source.
+ * List Files). Single sendCmd via the auto-increment counter.
  */
 export async function getStorageInfo(
   device: ClaimedDevice
@@ -148,6 +148,15 @@ export async function getStorageInfo(
   const response = await sendCmd(device, CMD_READ_CARD_INFO);
   if (!response || response.length < 16) return null;
   return tryInterpretStorage(response.slice(12));
+}
+
+/** Query battery status (charge state + percent + voltage). */
+export async function getBatteryStatus(
+  device: ClaimedDevice
+): Promise<BatteryStatus | null> {
+  const response = await sendCmd(device, CMD_GET_BATTERY_STATUS);
+  if (!response || response.length < 18) return null;
+  return tryInterpretBattery(response.slice(12));
 }
 
 /** Hook for the UI to render speed / ETA while a download is in flight. */
