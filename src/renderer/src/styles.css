@@ -922,6 +922,28 @@ input[type="checkbox"]:focus-visible {
 .log-info    { color: var(--info); }
 .log-warning { color: var(--warning); }
 
+/* ─── Collapsible panels ──────────────────────────── */
+.panel.collapsible .panel-header {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+.panel.collapsible .panel-header:hover {
+  background: var(--surface-2);
+}
+.panel.collapsible .panel-header .collapse-chevron {
+  font-size: 8px;
+  color: var(--text-dim);
+  transition: transform 0.2s, color 0.15s;
+  margin-left: 12px;
+}
+.panel.collapsible:hover .panel-header .collapse-chevron { color: var(--text-muted); }
+.panel.collapsible.collapsed .panel-header .collapse-chevron {
+  transform: rotate(-90deg);
+}
+.panel.collapsible.collapsed .panel-body { display: none; }
+.panel.collapsible.collapsed { margin-bottom: 12px; }
+
 /* ─── Transcription panel ─────────────────────────── */
 .whisper-summary {
   display: flex;

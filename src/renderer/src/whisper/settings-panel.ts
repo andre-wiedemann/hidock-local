@@ -24,6 +24,8 @@ import {
 } from './store.js';
 import { log } from '../ui/log.js';
 
+const COLLAPSED_KEY = 'hidock:whisper:panelCollapsed';
+
 let host: HTMLElement | null = null;
 let unsubscribeStore: (() => void) | null = null;
 let unsubscribeBridge: (() => void) | null = null;
@@ -32,10 +34,71 @@ export async function initWhisperPanel(): Promise<void> {
   host = document.getElementById('whisperPanelBody');
   if (!host) return;
 
+  applyCollapsedState();
+  wireCollapseToggle();
+
   await refreshModels();
   unsubscribeBridge = wireDownloadProgressBridge();
-  unsubscribeStore = subscribe(render);
+  unsubscribeStore = subscribe(() => {
+    render();
+    syncMetaLabel();
+  });
   render();
+  syncMetaLabel();
+}
+
+function applyCollapsedState(): void {
+  const panel = document.getElementById('whisperPanel');
+  if (!panel) return;
+  let collapsed: boolean;
+  const stored = localStorage.getItem(COLLAPSED_KEY);
+  if (stored === null) {
+    // First-run default: collapsed if a default model is already set
+    // (returning user with prefs from a previous session), expanded
+    // otherwise (so the model picker is the first thing they see).
+    collapsed = !!getPrefs().defaultModel;
+  } else {
+    collapsed = stored === 'true';
+  }
+  panel.classList.toggle('collapsed', collapsed);
+}
+
+function wireCollapseToggle(): void {
+  const header = document.getElementById('whisperPanelHeader');
+  const panel = document.getElementById('whisperPanel');
+  if (!header || !panel) return;
+
+  const toggle = (): void => {
+    const next = !panel.classList.contains('collapsed');
+    panel.classList.toggle('collapsed', next);
+    try {
+      localStorage.setItem(COLLAPSED_KEY, String(next));
+    } catch {
+      // Storage disabled — non-fatal.
+    }
+  };
+
+  header.addEventListener('click', toggle);
+  header.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggle();
+    }
+  });
+}
+
+function syncMetaLabel(): void {
+  // When collapsed, the meta line is the user's at-a-glance status —
+  // show the default model so they don't have to expand to check.
+  const meta = document.getElementById('whisperPanelMeta');
+  if (!meta) return;
+  const prefs = getPrefs();
+  const model = getModels().find((m) => m.name === prefs.defaultModel);
+  if (model) {
+    meta.textContent = `${model.displayName} · ${prefs.autoTranscribe ? 'auto' : 'manual'}`;
+  } else {
+    meta.textContent = 'no model picked yet';
+  }
 }
 
 export function destroyWhisperPanel(): void {
