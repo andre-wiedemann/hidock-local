@@ -19,9 +19,11 @@ import {
 
 /** List recordings on the device, sorted latest-first. */
 export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[]> {
-  // Param 0x0E goes in byte 7 (see protocol.ts). 128 KB lets us list
-  // upwards of 600 recordings — the 32 KB cap that the standalone
-  // shipped with truncated tail entries on devices with 200+ files.
+  // Param 0x0E goes in byte 7 (see protocol.ts). Matching the
+  // standalone HTML's 32 KB cap exactly — bumping to 128 KB earlier
+  // appears to have caused the device to truncate its response on
+  // some firmware variants, which is the opposite of what you'd
+  // expect. Stick to a value the standalone has been validated with.
   const response = await sendCommand(
     device,
     CMD_GROUP_SYSTEM,
@@ -29,25 +31,23 @@ export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[
     0x0e,
     0,
     null,
-    { multiChunk: true, readSize: 131072 }
+    { multiChunk: true, readSize: 32768 }
   );
   if (!response || response.length <= 12) return [];
   /* eslint-disable no-console */
   console.log(`[file-list] received ${response.length} bytes from device`);
-  // Hunt for filename-shaped substrings the parser might miss. If the
-  // user reports 12 missing recordings while we say "Found 214", and
-  // this scan finds 226, the regex is dropping them silently. If this
-  // scan also says 214, the device truly isn't returning them.
+  // Hunt for filename-shaped substrings the parser might miss + count
+  // recordings per day so we can compare with the standalone HTML's
+  // panel directly when entries go missing.
   const text = new TextDecoder('latin1').decode(response.slice(12));
   const allMatches = text.match(/\d{4}[A-Za-z]{3}\d{2}/g) ?? [];
-  const uniqueDays = new Set(allMatches);
+  const dayCounts: Record<string, number> = {};
+  for (const m of allMatches) dayCounts[m] = (dayCounts[m] ?? 0) + 1;
   console.log(
     `[file-list] raw "YYYYMonDD" substrings in response: ${allMatches.length} ` +
-    `(${uniqueDays.size} unique days)`
+    `(${Object.keys(dayCounts).length} unique days)`
   );
-  // Print every distinct day prefix sorted descending — easy to scan
-  // for missing March 29 entries.
-  console.log('[file-list] distinct days:', [...uniqueDays].sort().reverse().slice(0, 20));
+  console.log('[file-list] day counts:', dayCounts);
   /* eslint-enable no-console */
   return parseFileListResponse(response);
 }
