@@ -39,5 +39,14 @@ jobs:
       - name: Build whisper.cpp (if not cached)
         run: npm run whisper:fetch
 
+      - name: Cache sherpa-onnx download
+        uses: actions/cache@v4
+        with:
+          path: resources/sherpa
+          key: sherpa-${{ runner.os }}-${{ runner.arch }}-v1.13.1
+
+      - name: Fetch sherpa-onnx (if not cached)
+        run: npm run sherpa:fetch
+
       - name: Build
         run: npm run build

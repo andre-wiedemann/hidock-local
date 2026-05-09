@@ -13,6 +13,10 @@ files:
   # populates its own `resources/whisper/<plat-arch>/` so the resulting
   # bundle is naturally platform-scoped.
   - resources/whisper/**/*
+  # Bundle sherpa-onnx-offline-speaker-diarization fetched by
+  # fetch-sherpa.mjs. Same pattern as whisper-cli — each runner
+  # populates its own `resources/sherpa/<plat-arch>/`.
+  - resources/sherpa/**/*
   # Production deps that the main process requires at runtime.
   # ffmpeg-static carries its own platform-specific ffmpeg binary; the
   # main bundle externalizes it via electron-vite's externalizeDepsPlugin
