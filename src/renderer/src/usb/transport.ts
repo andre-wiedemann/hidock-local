@@ -33,6 +33,21 @@ export async function findPairedDevice(): Promise<USBDevice | null> {
 /** Open the device and claim interface 0. Idempotent. */
 export async function openAndClaim(device: USBDevice): Promise<void> {
   if (!device.opened) await device.open();
+  // USB-level reset between open and claim. Empirically the HiDock's
+  // storage-info command returns valid bytes only on the "first call
+  // after fresh enumeration" — without reset, subsequent app runs land
+  // in a degraded state where storage_info fails and the file list
+  // comes back short. Resetting at every connect gives us that fresh
+  // state regardless of what touched the device last.
+  try {
+    await device.reset();
+  } catch (err) {
+    // Reset can fail if the device is held by another app, or if the
+    // OS/driver disallows it. Not fatal — we just lose the benefit
+    // and might see the truncated file list.
+    // eslint-disable-next-line no-console
+    console.warn('USB reset skipped:', (err as Error).message);
+  }
   await device.selectConfiguration(1);
   await device.claimInterface(0);
 }
