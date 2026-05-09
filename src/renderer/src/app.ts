@@ -17,6 +17,7 @@ import {
   loadFileListCache,
   saveFileListCache
 } from './storage/persistence.js';
+import { fileTimestampKey } from './util/filename.js';
 import {
   applySettings,
   wireSettingsAutosave
@@ -85,10 +86,12 @@ async function loadFileListLive(silent = false): Promise<void> {
     }));
     log(`Found ${state.files.length} files`, 'success');
 
-    // parseFileListResponse already returns entries sorted latest-first
-    // via fileTimestampKey. The previous extra sort here used raw
-    // filename order ("Apr" vs "Aug") which broke chronological order
-    // and pushed April recordings way down the visible list — removed.
+    // Sort newest-first by the chronological timestamp embedded in the
+    // filename. Has to use fileTimestampKey (which maps Mon→MM) — a
+    // raw filename sort would put April after Aug because 'p' < 'u'.
+    state.files.sort((a, b) =>
+      fileTimestampKey(b.name).localeCompare(fileTimestampKey(a.name))
+    );
 
     renderFileList();
     saveFileListCache(state.files);
