@@ -20,14 +20,11 @@ import {
 
 /** List recordings on the device, sorted latest-first. */
 export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[]> {
-  // The HiDock truncates its file-list response in some session states
-  // (correlates with storage-info failure). Sending the command twice
-  // and keeping the longer response reliably lands us in the "complete"
-  // state on the second try — the first call seems to prime the
-  // device's file-list buffer even when its storage-info reply got
-  // dropped. Both calls cost ~50ms; cheap insurance against the
-  // truncation. Param 0x0E goes in byte 7 (see protocol.ts).
-  const r1 = await sendCommand(
+  // Single FILE_LIST request. Param 0x0E goes in byte 7 (see protocol.ts).
+  // Experiments to "double-call" or drain-then-call broke the response
+  // entirely on this firmware (returns nothing). The HiDock's file-list
+  // command is one-shot per session-state.
+  const response = await sendCommand(
     device,
     CMD_GROUP_SYSTEM,
     SUBCMD_FILE_LIST,
@@ -36,26 +33,6 @@ export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[
     null,
     { multiChunk: true, readSize: 32768 }
   );
-  // Tiny pause to let the device settle between identical commands.
-  await sleep(150);
-  const r2 = await sendCommand(
-    device,
-    CMD_GROUP_SYSTEM,
-    SUBCMD_FILE_LIST,
-    0x0e,
-    0,
-    null,
-    { multiChunk: true, readSize: 32768 }
-  );
-  const r1Len = r1?.length ?? 0;
-  const r2Len = r2?.length ?? 0;
-  const response = r1Len >= r2Len ? r1 : r2;
-  if (r1Len !== r2Len) {
-    /* eslint-disable-next-line no-console */
-    console.log(
-      `[file-list] response sizes: r1=${r1Len}B r2=${r2Len}B — using ${r1Len >= r2Len ? 'r1' : 'r2'}`
-    );
-  }
   if (!response || response.length <= 12) return [];
   /* eslint-disable no-console */
   console.log(`[file-list] received ${response.length} bytes from device`);
