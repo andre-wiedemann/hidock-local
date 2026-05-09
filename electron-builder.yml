@@ -13,11 +13,18 @@ files:
   # populates its own `resources/whisper/<plat-arch>/` so the resulting
   # bundle is naturally platform-scoped.
   - resources/whisper/**/*
+  # Production deps that the main process requires at runtime.
+  # ffmpeg-static carries its own platform-specific ffmpeg binary; the
+  # main bundle externalizes it via electron-vite's externalizeDepsPlugin
+  # so it resolves through node_modules at runtime.
+  - node_modules/ffmpeg-static/**/*
 
 asarUnpack:
-  # Binaries can't run when packed inside the asar. Unpack the whole
-  # resources tree so child_process.spawn() can find whisper-cli at runtime.
+  # Binaries can't execute when packed inside the asar. Unpack everything
+  # main-process spawn() targets at runtime: whisper-cli + its model dir,
+  # plus ffmpeg-static's bundled ffmpeg binary.
   - resources/**
+  - node_modules/ffmpeg-static/**
 
 mac:
   target:

@@ -20,7 +20,20 @@ import { existsSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { cpus, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { app } from 'electron';
-import ffmpegStatic from 'ffmpeg-static';
+import ffmpegStaticRaw from 'ffmpeg-static';
+
+/**
+ * Resolve ffmpeg-static's binary path, accounting for Electron's asar
+ * packaging. The package exports the path computed at import time:
+ *   - dev:        node_modules/ffmpeg-static/ffmpeg
+ *   - packaged:   .../app.asar/node_modules/ffmpeg-static/ffmpeg
+ * The packaged form points inside the asar, where binaries can't run.
+ * We unpack ffmpeg-static via electron-builder.yml#asarUnpack and
+ * rewrite the path here to match.
+ */
+const ffmpegStatic: string | null = ffmpegStaticRaw
+  ? ffmpegStaticRaw.replace(/app\.asar([\\/])/, 'app.asar.unpacked$1')
+  : null;
 import {
   TranscribeFormat,
   TranscribeProgress,
