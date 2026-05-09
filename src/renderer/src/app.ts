@@ -43,6 +43,7 @@ import {
 } from './ui/save-target.js';
 import { refreshStoragePanel } from './ui/storage-panel.js';
 import { wirePreviewClose } from './ui/preview.js';
+import { wireCollapsible } from './ui/collapsible.js';
 import {
   downloadAllOrZip,
   downloadSingle
@@ -281,6 +282,15 @@ export async function init(): Promise<void> {
   wireSaveTargetButtons();
   wirePreviewClose();
   wireUsbLifecycleEvents();
+  // Config panel collapses to free vertical space once the user has set
+  // their preferences. Default expanded — most users tweak something on
+  // first run.
+  wireCollapsible({
+    panelId: 'configPanel',
+    headerId: 'configPanelHeader',
+    storageKey: 'hidock:config:panelCollapsed',
+    defaultCollapsed: false
+  });
 
   // Cached list shows immediately, even pre-connect.
   restoreCachedFileList();

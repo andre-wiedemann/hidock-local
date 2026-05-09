@@ -52,8 +52,11 @@
       </section>
 
       <div id="downloadSection" style="display: none">
-        <section class="panel">
-          <div class="panel-header">Config</div>
+        <section class="panel collapsible" id="configPanel">
+          <div class="panel-header" id="configPanelHeader" role="button" tabindex="0">
+            Config
+            <span class="collapse-chevron" aria-hidden="true">▼</span>
+          </div>
           <div class="panel-body">
             <div class="save-target" id="saveTarget">
               <span class="label">Save Target</span>
@@ -81,13 +84,6 @@
                 <span class="field-label">Auto-save</span>
                 <input type="checkbox" id="autoSave" checked />
               </label>
-            </div>
-
-            <div class="btn-row">
-              <button id="listFilesBtn">List Files</button>
-              <button id="downloadAllBtn" class="primary">Download All</button>
-              <button id="downloadSelectedBtn">Download Selected</button>
-              <button id="stopBtn" class="danger" style="display: none">Stop</button>
             </div>
 
             <div class="info-banner" id="zipInfo" style="display: none">
@@ -142,6 +138,12 @@
         <section class="panel">
           <div class="panel-header">
             Files <span class="meta" id="filesPanelMeta"></span>
+          </div>
+          <div class="file-actions" id="fileActions">
+            <button id="listFilesBtn">List Files</button>
+            <button id="downloadAllBtn" class="primary">Download All</button>
+            <button id="downloadSelectedBtn">Download Selected</button>
+            <button id="stopBtn" class="danger" style="display: none">Stop</button>
           </div>
           <div id="fileSelectionControls" class="file-controls" style="display: none">
             <input type="text" id="searchInput" class="search-input" placeholder="Filter…" autocomplete="off" />

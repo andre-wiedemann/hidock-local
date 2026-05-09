@@ -23,8 +23,7 @@ import {
   wireDownloadProgressBridge
 } from './store.js';
 import { log } from '../ui/log.js';
-
-const COLLAPSED_KEY = 'hidock:whisper:panelCollapsed';
+import { wireCollapsible } from '../ui/collapsible.js';
 
 let host: HTMLElement | null = null;
 let unsubscribeStore: (() => void) | null = null;
@@ -34,8 +33,14 @@ export async function initWhisperPanel(): Promise<void> {
   host = document.getElementById('whisperPanelBody');
   if (!host) return;
 
-  applyCollapsedState();
-  wireCollapseToggle();
+  // Default-collapsed for returning users (have a model set), expanded for
+  // first-run users so they immediately see the model picker.
+  wireCollapsible({
+    panelId: 'whisperPanel',
+    headerId: 'whisperPanelHeader',
+    storageKey: 'hidock:whisper:panelCollapsed',
+    defaultCollapsed: () => !!getPrefs().defaultModel
+  });
 
   await refreshModels();
   unsubscribeBridge = wireDownloadProgressBridge();
@@ -45,46 +50,6 @@ export async function initWhisperPanel(): Promise<void> {
   });
   render();
   syncMetaLabel();
-}
-
-function applyCollapsedState(): void {
-  const panel = document.getElementById('whisperPanel');
-  if (!panel) return;
-  let collapsed: boolean;
-  const stored = localStorage.getItem(COLLAPSED_KEY);
-  if (stored === null) {
-    // First-run default: collapsed if a default model is already set
-    // (returning user with prefs from a previous session), expanded
-    // otherwise (so the model picker is the first thing they see).
-    collapsed = !!getPrefs().defaultModel;
-  } else {
-    collapsed = stored === 'true';
-  }
-  panel.classList.toggle('collapsed', collapsed);
-}
-
-function wireCollapseToggle(): void {
-  const header = document.getElementById('whisperPanelHeader');
-  const panel = document.getElementById('whisperPanel');
-  if (!header || !panel) return;
-
-  const toggle = (): void => {
-    const next = !panel.classList.contains('collapsed');
-    panel.classList.toggle('collapsed', next);
-    try {
-      localStorage.setItem(COLLAPSED_KEY, String(next));
-    } catch {
-      // Storage disabled — non-fatal.
-    }
-  };
-
-  header.addEventListener('click', toggle);
-  header.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      toggle();
-    }
-  });
 }
 
 function syncMetaLabel(): void {

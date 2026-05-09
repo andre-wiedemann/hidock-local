@@ -431,6 +431,17 @@ input[type="checkbox"]:focus-visible {
   text-overflow: ellipsis;
 }
 
+/* ─── File panel action bar (List Files / Download / Stop) ─── */
+.file-actions {
+  display: flex;
+  gap: 8px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+  flex-wrap: wrap;
+}
+.file-actions button { padding: 9px 14px; }
+
 /* ─── File list ──────────────────────────────────── */
 .file-controls {
   display: flex;
