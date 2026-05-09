@@ -66,13 +66,11 @@ async function loadFileListLive(silent = false): Promise<void> {
   try {
     if (!silent) log('Getting file list…', 'info');
     state.files = [];
-
-    // USB-first ordering: refresh storage + list files immediately to
-    // match the standalone HTML's exact sequence. The disk scan
-    // (refreshSavedFromDisk) used to run here too, but its IPC roundtrip
-    // added a ~100 ms gap between connect and the first USB command —
-    // long enough on this firmware to drop us into the truncated
-    // "warm" response state. We do that scan AFTER the file list now.
+    // Reconcile saved-state with disk before re-rendering rows — covers
+    // the case where the user deleted a file in Finder while the app was
+    // running so the saved badge disappears on the same List Files click
+    // that surfaces the device's recordings.
+    await refreshSavedFromDisk();
     await refreshStoragePanel();
 
     const entries = await listFiles(state.device);
@@ -97,11 +95,6 @@ async function loadFileListLive(silent = false): Promise<void> {
 
     renderFileList();
     saveFileListCache(state.files);
-
-    // Now that the USB sequence is done, reconcile saved-state with
-    // disk. This was previously called BEFORE the USB calls and the
-    // 100 ms IPC delay was disrupting the device's response window.
-    await refreshSavedFromDisk();
   } catch (err) {
     log(`Error listing files: ${(err as Error).message}`, 'error');
   }
