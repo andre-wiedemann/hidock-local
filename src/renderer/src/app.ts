@@ -67,15 +67,8 @@ async function loadFileListLive(silent = false): Promise<void> {
     if (!silent) log('Getting file list…', 'info');
     state.files = [];
 
-    // Init only runs on connect (re-running mid-session times out —
-    // the device only accepts the handshake from a fresh post-claim
-    // state). The storage-info refresh is also skipped on List Files
-    // — calling READ_CARD_INFO between FILE_LIST requests pushes the
-    // device back into the truncated "warm" state where the latest
-    // recordings disappear from the next response. Storage panel
-    // gets refreshed only on connect (inside connectDevice).
-
     await refreshSavedFromDisk();
+    await refreshStoragePanel();
 
     const entries = await listFiles(state.device);
     if (entries.length === 0) {
@@ -92,23 +85,16 @@ async function loadFileListLive(silent = false): Promise<void> {
     }));
     log(`Found ${state.files.length} files`, 'success');
 
-    // Sort latest first using the timestamp embedded in the filename.
-    // (parseFileListResponse already returns this order, but re-sorting is
-    // cheap and keeps the contract local.)
-    sortFilesLatestFirst();
+    // parseFileListResponse already returns entries sorted latest-first
+    // via fileTimestampKey. The previous extra sort here used raw
+    // filename order ("Apr" vs "Aug") which broke chronological order
+    // and pushed April recordings way down the visible list — removed.
 
     renderFileList();
     saveFileListCache(state.files);
   } catch (err) {
     log(`Error listing files: ${(err as Error).message}`, 'error');
   }
-}
-
-function sortFilesLatestFirst(): void {
-  // The names embed the timestamp; lexicographic sort on the embedded
-  // YYYYMMDDHHMMSS yields the right order. parsers.ts already does this.
-  // Re-applying here is cheap insurance against future reorderings.
-  state.files.sort((a, b) => b.name.localeCompare(a.name));
 }
 
 function restoreCachedFileList(): boolean {
@@ -144,15 +130,9 @@ async function connectDevice(usbDevice: USBDevice): Promise<void> {
     log('Initializing device…', 'info');
     await runInitSequence(state.device);
     log('Device initialized', 'success');
-    // Storage info is queried only here, while the device is in fresh
-    // post-init state. Calling READ_CARD_INFO later (e.g. before each
-    // List Files) drops the device into the truncated-response state
-    // and kills our 224-file ceiling.
-    await refreshStoragePanel();
   } catch (err) {
     log(`Init sequence failed: ${(err as Error).message} — listing anyway`, 'warning');
   }
-  // Settle delay then auto-list.
   setTimeout(() => loadFileListLive(), 200);
 }
 
