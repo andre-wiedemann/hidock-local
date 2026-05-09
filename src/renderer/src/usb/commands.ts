@@ -90,25 +90,38 @@ export async function listFiles(device: ClaimedDevice): Promise<ParsedFileEntry[
   if (!response || response.length <= 12) return [];
   /* eslint-disable no-console */
   console.log(`[file-list] received ${response.length} bytes from device`);
-  // Count record delimiters (05 00 00 1b) — that's the real record
-  // count straight from the wire format, independent of our regex.
+  // Extract printable ASCII after each delimiter — that's the
+  // filename region. If our parser misses a record, listing all
+  // 224 surfaces the odd one out.
   const payload = response.slice(12);
-  let delimCount = 0;
+  const FULL_RE = /(REC_\d{8}_\d{6}\.hda|\d{4}[A-Za-z]{3}\d{2}-\d{6}-Rec\d+\.hda)/i;
+  const records: { idx: number; preview: string; matchesRegex: boolean }[] = [];
   for (let i = 0; i + 4 <= payload.length; i++) {
     if (
       payload[i] === 0x05 && payload[i + 1] === 0x00 &&
       payload[i + 2] === 0x00 && payload[i + 3] === 0x1b
     ) {
-      delimCount++;
+      const start = i + 4;
+      const end = Math.min(start + 40, payload.length);
+      let s = '';
+      for (let j = start; j < end; j++) {
+        const b = payload[j];
+        if (b >= 32 && b < 127) s += String.fromCharCode(b);
+        else break;
+      }
+      records.push({
+        idx: records.length,
+        preview: s,
+        matchesRegex: FULL_RE.test(s)
+      });
       i += 3;
     }
   }
-  const text = new TextDecoder('latin1').decode(payload);
-  const dayMatches = text.match(/\d{4}[A-Za-z]{3}\d{2}/g) ?? [];
-  console.log(
-    `[file-list] record delimiters: ${delimCount} | ` +
-    `YYYYMonDD substrings: ${dayMatches.length}`
-  );
+  const orphans = records.filter((r) => !r.matchesRegex);
+  console.log(`[file-list] records on wire: ${records.length}, regex misses: ${orphans.length}`);
+  if (orphans.length > 0) {
+    console.log('[file-list] records the regex doesn\'t match:', orphans.map((r) => `#${r.idx}: ${JSON.stringify(r.preview)}`));
+  }
   /* eslint-enable no-console */
   return parseFileListResponse(response);
 }
