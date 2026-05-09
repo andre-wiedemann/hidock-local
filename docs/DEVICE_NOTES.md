@@ -53,6 +53,61 @@ For a 64 GB device:
 - Total blocks = 33,554,432
 - Total bytes = 33,554,432 × 2048 = 68,719,476,736 = 64 GiB exactly
 
+## File-list quirk: truncated tail
+
+The HiDock's file-list command (`0x00 0x04`, `param=0x0E`) does not always
+return the device's full inventory in one call. We've observed three
+distinct counts against the same physical recordings:
+
+- **Vendor app (HiNotes)**: 224 entries
+- **Standalone HTML** (`open-notes/.../batch-download-multi-zip.html`): 223
+  entries on the first call after page load, 214 on every subsequent
+  call within the same session
+- **HiDock Local (this app)**: 214 entries consistently
+
+The correlation that reproduces every time:
+- When `STORAGE_INFO` (`0x00 0x10`, `param=3`) returns valid bytes, the
+  next `FILE_LIST` returns the longer (223+) list.
+- When `STORAGE_INFO` times out, `FILE_LIST` returns 214.
+
+The vendor app sidesteps this by issuing a longer init sequence before
+ever asking for the file list — observed in their devtools log:
+
+```
+get-time           → "2026-05-09 17:31:53"
+set-time-to        → host clock
+get-settings       → autoRecord/autoPlay/...
+get-recording-quality
+get-card-info      → free/used/capacity (their version of STORAGE_INFO)
+battery-status
+... more init commands ...
+file-list          → count: 224, time: 98ms
+```
+
+We don't currently have the byte-level decoding for `get-time`,
+`set-time-to`, `get-settings`, etc., so we can't replicate the full
+init. Experiments to coax the device into the "long-list" state from
+the renderer side (drain the IN endpoint, USB reset, double-call,
+re-order command sequences, swap `readSize`) all either had no effect
+or made things worse — the device's protocol state machine is brittle
+and breaks on any divergence from "claim → STORAGE_INIT/INFO → FILE_LIST".
+
+### Workaround
+
+If you notice missing recordings (the day groups in the file list
+don't match what's on the device's own screen), unplug the HiDock for
+~5 seconds and plug it back in. The first `FILE_LIST` after a fresh
+USB enumeration is more likely to land in the "long-list" state and
+return everything.
+
+If that doesn't help, opening the standalone HTML in Chrome
+(`python3 -m http.server` then load the page) and clicking List Files
+once will pull the full list there — those recordings can be
+downloaded from the standalone in the meantime.
+
+A proper fix requires reverse-engineering the missing init commands
+the vendor app uses. Tracked separately on the protocol-re branch.
+
 ## Recording behavior
 
 Observed empirically:

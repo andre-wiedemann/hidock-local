@@ -1,6 +1,6 @@
 {
   "name": "hidock-local",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Vendor-free, cloud-free desktop tool for the HiDock P1 voice recorder. Pulls recordings off the device over USB without going through the manufacturer's cloud.",
   "main": "out/main/index.js",
   "author": "André Wiedemann",
