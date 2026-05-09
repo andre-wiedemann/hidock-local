@@ -125,35 +125,42 @@ export function renderFileList(metaSuffix?: string): void {
     });
 
     checkbox.addEventListener('change', () => {
-      state.files[index].selected = checkbox.checked;
+      const f = state.files[index];
+      if (!f) return;
+      f.selected = checkbox.checked;
       updateSelectionCount();
     });
 
+    // All per-row buttons guard against state.files going empty mid-render
+    // (List Files clears + repopulates). Without the guard we hit
+    // "Cannot read properties of undefined" if the user clicks a row
+    // during the reload window.
     const playBtn = item.querySelector('.play-btn') as HTMLButtonElement;
     playBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      previewFile(state.files[index]);
+      const f = state.files[index];
+      if (f) previewFile(f);
     });
 
     const retryBtn = item.querySelector('.retry-btn') as HTMLButtonElement;
     retryBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      retryHandler(state.files[index]);
+      const f = state.files[index];
+      if (f) retryHandler(f);
     });
 
     const transcribeBtn = item.querySelector('.transcribe-btn') as HTMLButtonElement;
     transcribeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // viewOrTranscribe surfaces an existing transcript if one is on
-      // disk; otherwise it enqueues a fresh run. The Re-transcribe
-      // button in the transcript panel is the explicit "rerun" path.
-      viewOrTranscribe(state.files[index]);
+      const f = state.files[index];
+      if (f) viewOrTranscribe(f);
     });
 
     const downloadBtn = item.querySelector('.download-btn') as HTMLButtonElement;
     downloadBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      downloadHandler(state.files[index]);
+      const f = state.files[index];
+      if (f) downloadHandler(f);
     });
 
     listDiv.appendChild(item);

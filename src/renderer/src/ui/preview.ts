@@ -37,7 +37,11 @@ async function loadAudioBytes(file: RecordingFile): Promise<{ bytes: Uint8Array;
   return { bytes, source: 'device' };
 }
 
-export async function previewFile(file: RecordingFile): Promise<void> {
+export async function previewFile(file: RecordingFile | undefined): Promise<void> {
+  // Defensive: callers go through `state.files[index]` which may be
+  // briefly empty during a List Files refresh. The row's old click
+  // handler can fire in that window with a stale index → undefined.
+  if (!file) return;
   if (state.previewing) {
     log('Preview already in progress — finish or close first', 'warning');
     return;
